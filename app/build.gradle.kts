@@ -26,6 +26,17 @@ android {
         }
     }
 
+    // Clave de firma fija: así cada versión nueva se instala encima de la anterior
+    // (con la clave de depuración, cada compilación en GitHub tendría una distinta)
+    signingConfigs {
+        create("zxsofa") {
+            storeFile = file("zxsofa.keystore")
+            storePassword = "zxsofa123"
+            keyAlias = "zxsofa"
+            keyPassword = "zxsofa123"
+        }
+    }
+
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
@@ -34,10 +45,12 @@ android {
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("zxsofa")
+        }
         release {
             isMinifyEnabled = false
-            // Firmado con la clave de depuración para poder instalarlo directamente (uso personal)
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("zxsofa")
         }
     }
 

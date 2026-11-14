@@ -34,4 +34,9 @@ object NativeCore {
     external fun nativeSaveState(path: String): Boolean
     external fun nativeLoadState(path: String): Boolean
     external fun nativeTakeMessage(): String?
+
+    // Varias cintas/caras (cargadas desde un .m3u)
+    external fun nativeTapeCount(): Int
+    external fun nativeTapeIndex(): Int
+    external fun nativeTapeSelect(index: Int): Boolean
 }

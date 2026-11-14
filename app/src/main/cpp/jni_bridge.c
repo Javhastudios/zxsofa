@@ -150,3 +150,18 @@ JNIEXPORT jstring JNICALL FN(nativeTakeMessage)(JNIEnv *env, jobject thiz)
    const char *m = zx_take_message();
    return m ? (*env)->NewStringUTF(env, m) : NULL;
 }
+
+JNIEXPORT jint JNICALL FN(nativeTapeCount)(JNIEnv *env, jobject thiz)
+{
+   return zx_tape_count();
+}
+
+JNIEXPORT jint JNICALL FN(nativeTapeIndex)(JNIEnv *env, jobject thiz)
+{
+   return zx_tape_index();
+}
+
+JNIEXPORT jboolean JNICALL FN(nativeTapeSelect)(JNIEnv *env, jobject thiz, jint index)
+{
+   return zx_tape_select((unsigned)index) ? JNI_TRUE : JNI_FALSE;
+}

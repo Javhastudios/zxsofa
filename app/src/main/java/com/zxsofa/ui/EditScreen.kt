@@ -1,6 +1,12 @@
 package com.zxsofa.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.Alignment
+import com.zxsofa.data.Sides
+import java.io.File
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -50,6 +56,9 @@ fun EditScreen(vm: LibraryViewModel, gameId: Long) {
     var notes by remember { mutableStateOf(game.notes ?: "") }
     var machine by remember { mutableStateOf(game.machine) }
     var controls by remember { mutableStateOf(game.controls) }
+    val pickTapes = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        vm.addTapes(game, uris)
+    }
 
     Column(Modifier.fillMaxSize()) {
         AppHeader("Editar") {
@@ -66,6 +75,24 @@ fun EditScreen(vm: LibraryViewModel, gameId: Long) {
             }
             OutlinedTextField(genre, { genre = it }, label = { Text("Género") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(notes, { notes = it }, label = { Text("Notas (teclas, trucos…)") }, minLines = 2, modifier = Modifier.fillMaxWidth())
+
+            SectionTitle("Cintas y caras")
+            game.allFiles.forEachIndexed { i, path ->
+                Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(Sides.label(File(path).name, i) + if (i == 0) " (se carga al empezar)" else "")
+                        Text(File(path).name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (i > 0) TextButton(onClick = { vm.removeTape(game, path) }) { Text("Quitar") }
+                }
+            }
+            OutlinedButton(onClick = { runCatching { pickTapes.launch(arrayOf("*/*")) } }) { Text("Añadir otra cinta o cara") }
+            Text(
+                "Si un juego viene en varias caras (Side A, Side B…), añádelas aquí o súbelas con el mismo nombre: " +
+                    "la app las junta sola. Durante la partida, cámbialas desde el menú de pausa.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
 
             SectionTitle("Emulación")
             SelectorRow("Modelo de Spectrum", machine, Machine.entries, { it.label }, { machine = it })

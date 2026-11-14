@@ -89,6 +89,7 @@ fun DetailScreen(vm: LibraryViewModel, gameId: Long, onPlay: (Game, Boolean) -> 
                     InfoLine("Modelo", game.machine.label)
                     InfoLine("Controles", controlsSummary(game))
                     InfoLine("Fichero", game.fileName)
+                    InfoLine("Cintas", if (game.extraFiles.isNotEmpty()) "${game.allFiles.size} (cámbialas en el menú de pausa)" else null)
                     InfoLine("Partidas", if (game.playCount > 0) "${game.playCount}" else null)
                     InfoLine("Última vez", if (game.lastPlayed > 0) DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(game.lastPlayed)) else null)
                     InfoLine("ZXDB", game.zxdbId)

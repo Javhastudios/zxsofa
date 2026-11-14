@@ -84,6 +84,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
                 when (val r = repo.importUri(uri)) {
                     is GameRepository.ImportResult.Added -> { added++; toIdentify += r.game }
                     is GameRepository.ImportResult.Duplicate -> _messages.tryEmit("Ya estaba en la colección: ${r.game.title}")
+                    is GameRepository.ImportResult.AddedSide -> _messages.tryEmit("Nueva cinta añadida a ${r.game.title} (${r.game.allFiles.size} en total)")
                     is GameRepository.ImportResult.Error -> _messages.tryEmit(r.message)
                 }
             }
@@ -101,9 +102,20 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
                 identifyAll(listOf(result.game))
             }
             is GameRepository.ImportResult.Duplicate -> _messages.tryEmit("Ya estaba en la colección: ${result.game.title}")
+            is GameRepository.ImportResult.AddedSide -> _messages.tryEmit("Nueva cinta añadida a ${result.game.title}")
             is GameRepository.ImportResult.Error -> _messages.tryEmit(result.message)
         }
     }
+
+    fun addTapes(game: Game, uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        viewModelScope.launch {
+            val n = repo.addTapes(game, uris)
+            _messages.tryEmit(if (n > 0) "Añadidas $n cintas/caras" else "Ningún fichero válido")
+        }
+    }
+
+    fun removeTape(game: Game, path: String) = viewModelScope.launch { repo.removeTape(game, path) }
 
     private fun identifyAll(list: List<Game>) {
         if (list.isEmpty()) return

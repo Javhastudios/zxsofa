@@ -99,6 +99,9 @@ class EmulatorEngine(
         done(file.exists() && NativeCore.nativeLoadState(file.absolutePath))
     }
 
+    /** Cambia a otra cinta/cara sin reiniciar el Spectrum. */
+    fun selectTape(index: Int, done: (Boolean) -> Unit) = post { done(NativeCore.nativeTapeSelect(index)) }
+
     fun setJoystickType(type: Int) = post { NativeCore.nativeSetJoystickType(type) }
 
     fun setOption(key: String, value: String) = post { NativeCore.nativeSetOption(key, value) }

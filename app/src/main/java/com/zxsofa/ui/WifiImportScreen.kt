@@ -48,6 +48,7 @@ fun WifiImportScreen(vm: LibraryViewModel) {
             val text = when (result) {
                 is GameRepository.ImportResult.Added -> "añadido ✔"
                 is GameRepository.ImportResult.Duplicate -> "ya estaba en la colección"
+                is GameRepository.ImportResult.AddedSide -> "añadido como otra cara de ${result.game.title} ✔"
                 is GameRepository.ImportResult.Error -> result.message
             }
             received.add(0, "$name: $text")

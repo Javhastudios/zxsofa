@@ -46,6 +46,10 @@ static int has_message;
 
 static struct retro_system_av_info av_info;
 
+/* Control de "discos" del nucleo: lo usamos para cambiar de cinta (caras A/B) */
+static struct retro_disk_control_callback disk_cb;
+static int has_disk_cb;
+
 /* ------------------------------------------------------------------ log */
 
 static void zx_logf(int level, const char *fmt, ...)
@@ -137,13 +141,17 @@ static bool RETRO_CALLCONV environment_cb(unsigned cmd, void *data)
          *(unsigned *)data = 0;
          return true;
 
+      case RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE:
+         disk_cb = *(const struct retro_disk_control_callback *)data;
+         has_disk_cb = 1;
+         return true;
+
       case RETRO_ENVIRONMENT_SET_GEOMETRY:
       case RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO:
       case RETRO_ENVIRONMENT_SET_VARIABLES:
       case RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME:
       case RETRO_ENVIRONMENT_SET_CONTROLLER_INFO:
       case RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS:
-      case RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE:
       case RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS:
          return true;
 
@@ -463,6 +471,35 @@ int zx_state_load(const char *path)
    ok = retro_unserialize(buf, size) ? 1 : 0;
    free(buf);
    return ok;
+}
+
+int zx_tape_count(void)
+{
+   if (!loaded || !has_disk_cb || !disk_cb.get_num_images)
+      return 0;
+   return (int)disk_cb.get_num_images();
+}
+
+int zx_tape_index(void)
+{
+   if (!loaded || !has_disk_cb || !disk_cb.get_image_index)
+      return 0;
+   return (int)disk_cb.get_image_index();
+}
+
+int zx_tape_select(unsigned index)
+{
+   if (!loaded || !has_disk_cb || index >= (unsigned)zx_tape_count())
+      return 0;
+   /* Mismo protocolo que un frontend libretro: expulsar, elegir, insertar */
+   if (!disk_cb.set_eject_state(true))
+      return 0;
+   if (!disk_cb.set_image_index(index))
+   {
+      disk_cb.set_eject_state(false);
+      return 0;
+   }
+   return disk_cb.set_eject_state(false) ? 1 : 0;
 }
 
 const char *zx_take_message(void)

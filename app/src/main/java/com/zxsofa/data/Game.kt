@@ -80,6 +80,8 @@ data class Game(
     val fileName: String,
     val filePath: String,
     val md5: String,
+    /** Otras cintas/caras del mismo juego (rutas absolutas), en orden. */
+    val extraFiles: List<String> = emptyList(),
     val year: String? = null,
     val publisher: String? = null,
     val genre: String? = null,
@@ -96,4 +98,50 @@ data class Game(
 ) {
     val subtitle: String
         get() = listOfNotNull(year, publisher).joinToString(" · ")
+
+    /** Todas las cintas del juego: la principal primero. */
+    val allFiles: List<String>
+        get() = listOf(filePath) + extraFiles
+}
+
+/** Reconoce "Side A", "Cara B", "Part 2", "Tape 1 Side B"... en nombres de fichero. */
+object Sides {
+    private val marker = Regex("(?i)(?<![a-z])(side|cara|lado|part|parte|tape|cinta|disk|disco)[\\s_\\-]*([a-d]|[1-9])(?![a-z0-9])")
+
+    fun hasMarker(fileName: String): Boolean = marker.containsMatchIn(fileName.substringAfterLast('/'))
+
+    /** Clave para ordenar: Side A < Side B, Tape 1 Side B < Tape 2 Side A... */
+    fun order(fileName: String): List<Int> =
+        marker.findAll(fileName.substringAfterLast('/')).map { m ->
+            val v = m.groupValues[2].lowercase()[0]
+            if (v.isDigit()) v - '0' else v - 'a' + 1
+        }.toList()
+
+    fun compare(a: String, b: String): Int {
+        val oa = order(a)
+        val ob = order(b)
+        for (i in 0 until maxOf(oa.size, ob.size)) {
+            val c = oa.getOrElse(i) { 0 }.compareTo(ob.getOrElse(i) { 0 })
+            if (c != 0) return c
+        }
+        return a.compareTo(b, ignoreCase = true)
+    }
+
+    /** Quita las marcas de cara para agrupar ("Robocop - Side 2 of 2" -> "Robocop"). */
+    fun stripMarkers(name: String): String =
+        name.replace(Regex("(?i)(?<![a-z])(side|cara|lado|part|parte|tape|cinta|disk|disco)[\\s_\\-]*([a-d]|[1-9])(\\s*(of|de)\\s*\\d)?(?![a-z0-9])"), " ")
+
+    /** Etiqueta legible: "Cara A", "Cinta 1 · Cara B", "Parte 2"... */
+    fun label(fileName: String, index: Int): String {
+        val parts = marker.findAll(fileName.substringAfterLast('/')).map { m ->
+            val word = when (m.groupValues[1].lowercase()) {
+                "side", "cara", "lado" -> "Cara"
+                "part", "parte" -> "Parte"
+                "tape", "cinta" -> "Cinta"
+                else -> "Disco"
+            }
+            "$word ${m.groupValues[2].uppercase()}"
+        }.toList()
+        return if (parts.isEmpty()) "Cinta ${index + 1}" else parts.joinToString(" · ")
+    }
 }

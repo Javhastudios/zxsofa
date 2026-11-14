@@ -18,6 +18,7 @@ class GameDb(context: Context) : SQLiteOpenHelper(context, "games.db", null, VER
                 file_name TEXT NOT NULL,
                 file_path TEXT NOT NULL,
                 md5 TEXT NOT NULL,
+                extra_files TEXT,
                 year TEXT,
                 publisher TEXT,
                 genre TEXT,
@@ -38,7 +39,8 @@ class GameDb(context: Context) : SQLiteOpenHelper(context, "games.db", null, VER
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // Futuras migraciones aquí (nunca borrar la tabla: son los datos del usuario)
+        // Nunca borrar la tabla: son los datos del usuario
+        if (oldVersion < 2) db.execSQL("ALTER TABLE games ADD COLUMN extra_files TEXT")
     }
 
     fun all(): List<Game> = readableDatabase.query("games", null, null, null, null, null, "title COLLATE NOCASE")
@@ -65,6 +67,7 @@ class GameDb(context: Context) : SQLiteOpenHelper(context, "games.db", null, VER
         put("file_name", fileName)
         put("file_path", filePath)
         put("md5", md5)
+        put("extra_files", extraFiles.joinToString("\n").ifBlank { null })
         put("year", year)
         put("publisher", publisher)
         put("genre", genre)
@@ -89,6 +92,7 @@ class GameDb(context: Context) : SQLiteOpenHelper(context, "games.db", null, VER
         fileName = str("file_name") ?: "",
         filePath = str("file_path") ?: "",
         md5 = str("md5") ?: "",
+        extraFiles = str("extra_files")?.split("\n")?.filter { it.isNotBlank() } ?: emptyList(),
         year = str("year"),
         publisher = str("publisher"),
         genre = str("genre"),
@@ -105,6 +109,6 @@ class GameDb(context: Context) : SQLiteOpenHelper(context, "games.db", null, VER
     )
 
     companion object {
-        const val VERSION = 1
+        const val VERSION = 2
     }
 }

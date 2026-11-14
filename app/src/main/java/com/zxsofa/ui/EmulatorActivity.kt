@@ -28,6 +28,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Menu
@@ -61,6 +63,7 @@ import androidx.lifecycle.lifecycleScope
 import com.zxsofa.ZXSofaApp
 import com.zxsofa.data.Game
 import com.zxsofa.data.JoyMode
+import com.zxsofa.data.Sides
 import com.zxsofa.data.TouchMode
 import com.zxsofa.emu.AndroidKeyMap
 import com.zxsofa.emu.CoreOptions
@@ -90,6 +93,7 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
     private var usingGamepad by mutableStateOf(false)
     private var touchHidden by mutableStateOf(false)
     private var joyMode by mutableStateOf(JoyMode.KEMPSTON)
+    private var tapeIndex by mutableStateOf(0)
     private var started = false
 
     // Entrada física
@@ -133,7 +137,7 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
             val state = if (resume) app.repository.autoStateFile(g.id).takeIf { it.exists() } else null
             engine.start(
                 LaunchConfig(
-                    gamePath = g.filePath,
+                    gamePath = app.repository.launchPath(g),
                     options = CoreOptions.forGame(g, app.settings),
                     joystickType = g.controls.mode.coreJoystick,
                     stateToLoad = state,
@@ -205,6 +209,22 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
     private fun loadSlot() {
         val g = game ?: return
         engine.loadState(app.repository.slotStateFile(g.id)) { ok -> toast(if (ok) "Partida cargada" else "No hay partida guardada") }
+        closeMenu()
+    }
+
+    private fun selectTape(index: Int) {
+        val g = game ?: return
+        val label = Sides.label(java.io.File(g.allFiles[index]).name, index)
+        engine.selectTape(index) { ok ->
+            runOnUiThread {
+                if (ok) {
+                    tapeIndex = index
+                    toast("$label insertada")
+                } else {
+                    toast("No se pudo cambiar de cinta")
+                }
+            }
+        }
         closeMenu()
     }
 
@@ -409,7 +429,9 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
             Column(
                 Modifier
                     .widthIn(max = 420.dp)
+                    .padding(vertical = 12.dp)
                     .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp))
+                    .verticalScroll(rememberScrollState())
                     .padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -417,6 +439,18 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
                 RainbowStripes(stripe = 4.dp)
                 Spacer(Modifier.height(4.dp))
                 Button(onClick = { closeMenu() }, Modifier.fillMaxWidth().focusRequester(first)) { Text("Continuar") }
+                if (g != null && g.extraFiles.isNotEmpty()) {
+                    Text("Cinta en el cassette:", style = MaterialTheme.typography.labelLarge)
+                    g.allFiles.forEachIndexed { i, path ->
+                        val label = Sides.label(java.io.File(path).name, i)
+                        if (i == tapeIndex) {
+                            Button(onClick = { closeMenu() }, Modifier.fillMaxWidth()) { Text("▶ $label") }
+                        } else {
+                            FilledTonalButton(onClick = { selectTape(i) }, Modifier.fillMaxWidth()) { Text("Poner $label") }
+                        }
+                    }
+                    Spacer(Modifier.height(4.dp))
+                }
                 FilledTonalButton(onClick = { saveSlot() }, Modifier.fillMaxWidth()) { Text("Guardar partida") }
                 FilledTonalButton(onClick = { loadSlot() }, Modifier.fillMaxWidth()) { Text("Cargar partida") }
                 FilledTonalButton(onClick = {

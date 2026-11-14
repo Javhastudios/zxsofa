@@ -37,6 +37,8 @@ class GameRepository(private val context: Context) {
     sealed class ImportResult {
         data class Added(val game: Game) : ImportResult()
         data class Duplicate(val game: Game) : ImportResult()
+        /** Era otra cara/cinta de un juego que ya estaba: se ha unido a él. */
+        data class AddedSide(val game: Game) : ImportResult()
         data class Error(val message: String) : ImportResult()
     }
 
@@ -53,29 +55,50 @@ class GameRepository(private val context: Context) {
 
     suspend fun importBytes(originalName: String, data: ByteArray): ImportResult = withContext(Dispatchers.IO) {
         if (data.size > MAX_FILE_SIZE) return@withContext ImportResult.Error("$originalName es demasiado grande")
-        var name = originalName.substringAfterLast('/').substringAfterLast('\\')
-        var bytes = data
+        val name = originalName.substringAfterLast('/').substringAfterLast('\\')
 
-        if (name.lowercase().endsWith(".zip")) {
-            val inner = extractFromZip(bytes) ?: return@withContext ImportResult.Error("$name no contiene ningún juego de Spectrum")
-            name = inner.first
-            bytes = inner.second
+        // Un zip puede traer varias cintas o caras: se guardan todas como un único juego
+        val files: List<Pair<String, ByteArray>> = if (name.lowercase().endsWith(".zip")) {
+            extractAllFromZip(data).ifEmpty { return@withContext ImportResult.Error("$name no contiene ningún juego de Spectrum") }
+        } else {
+            val ext = name.substringAfterLast('.', "").lowercase()
+            if (ext !in SUPPORTED) return@withContext ImportResult.Error("$name: formato .$ext no soportado")
+            listOf(name to data)
         }
-        val ext = name.substringAfterLast('.', "").lowercase()
-        if (ext !in SUPPORTED) return@withContext ImportResult.Error("$name: formato .$ext no soportado")
 
-        val md5 = md5(bytes)
+        val first = files.first()
+        val md5 = md5(first.second)
         db.findByMd5(md5)?.let { return@withContext ImportResult.Duplicate(it) }
 
-        val safeName = name.replace(Regex("[^A-Za-z0-9._()\\- ]"), "_")
-        val file = uniqueFile(gamesDir, safeName)
-        file.writeBytes(bytes)
+        // ¿Es otra cara de un juego que ya tenemos? ("Robocop (Side B)" junto a "Robocop (Side A)")
+        if (files.size == 1 && Sides.hasMarker(first.first)) {
+            val key = groupKey(first.first)
+            val owner = db.all().firstOrNull { g -> g.allFiles.any { Sides.hasMarker(it) } && groupKey(g.fileName) == key }
+            if (owner != null) {
+                if (owner.allFiles.any { File(it).name.equals(safeName(first.first), ignoreCase = true) }) {
+                    return@withContext ImportResult.Duplicate(owner)
+                }
+                val file = uniqueFile(gamesDir, safeName(first.first))
+                file.writeBytes(first.second)
+                val updated = withSortedFiles(owner, owner.allFiles + file.absolutePath)
+                db.update(updated)
+                _games.value = db.all()
+                return@withContext ImportResult.AddedSide(updated)
+            }
+        }
+
+        val saved = files
+            .map { (n, bytes) -> n to uniqueFile(gamesDir, safeName(n)).also { it.writeBytes(bytes) }.absolutePath }
+            .sortedWith { a, b -> Sides.compare(a.first, b.first) }
+        val primaryName = saved.first().first
+        val sorted = saved.map { it.second }
 
         val game = Game(
-            title = guessTitle(name),
-            fileName = name,
-            filePath = file.absolutePath,
-            md5 = md5,
+            title = guessTitle(primaryName),
+            fileName = primaryName,
+            filePath = sorted.first(),
+            extraFiles = sorted.drop(1),
+            md5 = md5(File(sorted.first()).readBytes()),
             machine = if (Regex("(^|[^0-9])128([^0-9]|$)").containsMatchIn(name)) Machine.SPEC128 else Machine.DEFAULT,
         )
         val id = db.insert(game)
@@ -83,10 +106,66 @@ class GameRepository(private val context: Context) {
         ImportResult.Added(game.copy(id = id))
     }
 
-    private fun extractFromZip(bytes: ByteArray): Pair<String, ByteArray>? {
+    /** Ordena las cintas (Cara A primero) y recalcula la principal y su huella. */
+    private fun withSortedFiles(g: Game, paths: List<String>): Game {
+        val sorted = paths.distinct().sortedWith { a, b -> Sides.compare(File(a).name, File(b).name) }
+        val primary = sorted.first()
+        return if (primary == g.filePath) {
+            g.copy(extraFiles = sorted.drop(1))
+        } else {
+            g.copy(
+                filePath = primary,
+                fileName = File(primary).name,
+                extraFiles = sorted.drop(1),
+                md5 = md5(File(primary).readBytes()),
+            )
+        }
+    }
+
+    /** Añade a mano otra cinta/cara a un juego (desde la pantalla Editar). */
+    suspend fun addTapes(game: Game, uris: List<Uri>): Int = withContext(Dispatchers.IO) {
+        var g = db.get(game.id) ?: return@withContext 0
+        var added = 0
+        for (uri in uris) {
+            val name = displayName(uri) ?: uri.lastPathSegment ?: continue
+            val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: continue
+            val items = if (name.lowercase().endsWith(".zip")) extractAllFromZip(bytes)
+            else if (name.substringAfterLast('.', "").lowercase() in SUPPORTED) listOf(name to bytes) else emptyList()
+            for ((n, b) in items) {
+                val file = uniqueFile(gamesDir, safeName(n))
+                file.writeBytes(b)
+                g = withSortedFiles(g, g.allFiles + file.absolutePath)
+                added++
+            }
+        }
+        db.update(g)
+        _games.value = db.all()
+        added
+    }
+
+    /** Quita una cinta extra del juego (no la principal). */
+    suspend fun removeTape(game: Game, path: String) = withContext(Dispatchers.IO) {
+        val g = db.get(game.id) ?: return@withContext
+        if (path == g.filePath || path !in g.extraFiles) return@withContext
+        File(path).delete()
+        db.update(g.copy(extraFiles = g.extraFiles - path))
+        _games.value = db.all()
+    }
+
+    /**
+     * Fichero que hay que cargar en el emulador: el propio juego o, si tiene varias
+     * cintas, una lista .m3u con todas (el emulador permite cambiar entre ellas).
+     */
+    fun launchPath(game: Game): String {
+        if (game.extraFiles.isEmpty()) return game.filePath
+        val m3u = File(context.cacheDir, "cintas_${game.id}.m3u")
+        m3u.writeText(game.allFiles.joinToString("\n") + "\n")
+        return m3u.absolutePath
+    }
+
+    private fun extractAllFromZip(bytes: ByteArray): List<Pair<String, ByteArray>> {
+        val found = mutableListOf<Pair<String, ByteArray>>()
         ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
-            // Preferimos cintas y snapshots por este orden
-            val found = mutableListOf<Pair<String, ByteArray>>()
             while (true) {
                 val e = zip.nextEntry ?: break
                 if (e.isDirectory) continue
@@ -94,8 +173,12 @@ class GameRepository(private val context: Context) {
                 val ext = n.substringAfterLast('.', "").lowercase()
                 if (ext in SUPPORTED) found += n to zip.readBytes()
             }
-            return found.minByOrNull { SUPPORTED.indexOf(it.first.substringAfterLast('.').lowercase()) }
         }
+        if (found.size <= 1) return found
+        // Si hay cintas y también snapshots del mismo juego, nos quedamos con el formato preferido
+        val bestExt = found.minOf { SUPPORTED.indexOf(it.first.substringAfterLast('.').lowercase()) }
+        return found.filter { SUPPORTED.indexOf(it.first.substringAfterLast('.').lowercase()) == bestExt }
+            .sortedWith { a, b -> Sides.compare(a.first, b.first) }
     }
 
     // ------------------------------------------------------ identificar
@@ -203,7 +286,8 @@ class GameRepository(private val context: Context) {
     }
 
     suspend fun delete(game: Game) = withContext(Dispatchers.IO) {
-        listOfNotNull(game.filePath, game.coverPath, game.screenPath).forEach { File(it).delete() }
+        (game.allFiles + listOfNotNull(game.coverPath, game.screenPath)).forEach { File(it).delete() }
+        File(context.cacheDir, "cintas_${game.id}.m3u").delete()
         statesDir.listFiles { f -> f.name.startsWith("${game.id}_") }?.forEach { it.delete() }
         db.delete(game.id)
         _games.value = db.all()
@@ -223,6 +307,10 @@ class GameRepository(private val context: Context) {
     } catch (e: Exception) {
         null
     }
+
+    private fun safeName(name: String) = name.replace(Regex("[^A-Za-z0-9._()\\- ]"), "_")
+
+    private fun groupKey(fileName: String) = CoverFinder.normalize(Sides.stripMarkers(guessTitle(fileName)))
 
     private fun uniqueFile(dir: File, name: String): File {
         var f = File(dir, name)
@@ -245,8 +333,9 @@ class GameRepository(private val context: Context) {
         fun guessTitle(fileName: String): String {
             var t = fileName.substringBeforeLast('.')
             t = t.replace(Regex("\\([^)]*\\)|\\[[^]]*]"), " ")
+            t = Sides.stripMarkers(t)
             t = t.replace('_', ' ').replace(Regex("\\s+-\\s*(128k?|48k?|side [ab]|tape \\d)\\s*$", RegexOption.IGNORE_CASE), " ")
-            t = t.replace(Regex("\\s+"), " ").trim()
+            t = t.replace(Regex("\\s+"), " ").trim().trimEnd('-', '_', ',', '.', ' ')
             return t.ifBlank { fileName }
         }
     }

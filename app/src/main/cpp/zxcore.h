@@ -68,6 +68,11 @@ void zx_release_all(void);
 int  zx_state_save(const char *path);
 int  zx_state_load(const char *path);
 
+/* Cintas (caras) cargadas desde un .m3u. zx_tape_select cambia de cinta sin reiniciar. */
+int  zx_tape_count(void);
+int  zx_tape_index(void);
+int  zx_tape_select(unsigned index);
+
 /* Mensaje pendiente del nucleo (o NULL). Se vacia al leerlo. */
 const char *zx_take_message(void);
 

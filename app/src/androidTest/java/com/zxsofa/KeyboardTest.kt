@@ -56,6 +56,9 @@ class KeyboardTest {
             // 10 PRINT "HOLA" ; ENTER  y luego RUN
             listOf("key_1", "key_0", "key_P", "key_\"", "key_H", "key_O", "key_L", "key_A", "key_\"", "key_ENTER").forEach { tap(it) }
             Thread.sleep(500)
+            // 20 PRINT "x" usando SYMB enganchada + P para las comillas
+            listOf("key_2", "key_0", "key_P", "key_SYMBSHIFT", "key_P", "key_X", "key_SYMBSHIFT", "key_P", "key_ENTER").forEach { tap(it) }
+            Thread.sleep(500)
             listOf("key_R", "key_ENTER").forEach { tap(it) }
             Thread.sleep(1500)
             shot("KEYBV")

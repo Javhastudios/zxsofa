@@ -1,6 +1,8 @@
 package com.zxsofa.ui
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -233,28 +235,41 @@ fun ListView(games: List<Game>, identifying: List<Long>, onOpen: (Game) -> Unit,
 
 // --------------------------------------------------------------- estantería
 
-private val spineColors = listOf(ZxColors.Red, ZxColors.Yellow, ZxColors.Green, ZxColors.Cyan, Color(0xFFD800D8), Color(0xFF2F5BFF))
-private val Wood = Color(0xFF5A3A22)
-private val WoodDark = Color(0xFF3B2414)
-private val WoodLight = Color(0xFF8A5A34)
-
-/** Cajas de cassette vistas de canto, colocadas en baldas de madera. */
+/**
+ * Estantería de madera: cada fila es una balda (res/drawable-nodpi/shelf_tile.jpg, que se
+ * repite sin cortes). Las cajas están de pie sobre la balda mostrando la portada, y el título
+ * va en una etiqueta en el canto.
+ * Proporciones de la imagen: pared 0-70 %, superficie de la balda 71-85 %, canto 86-100 %.
+ */
 @Composable
 fun ShelfView(games: List<Game>, onOpen: (Game) -> Unit) {
-    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(WoodDark, Color(0xFF2A190E))))) {
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(290.dp),
-            contentPadding = PaddingValues(vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(0.dp),
-            verticalArrangement = Arrangement.spacedBy(0.dp),
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            items(games, key = { it.id }) { g ->
-                Column {
-                    CassetteSpine(g, onClick = { onOpen(g) }, modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp))
-                    // La balda: al no haber hueco entre columnas, forma una tabla continua
-                    Box(Modifier.fillMaxWidth().height(4.dp).background(WoodLight))
-                    Box(Modifier.fillMaxWidth().height(6.dp).background(Wood))
+    BoxWithConstraints(Modifier.fillMaxSize().background(Color(0xFF3A2412))) {
+        val rowHeight = if (maxHeight > 700.dp) 250.dp else 220.dp
+        val boxHeight = rowHeight * 0.66f
+        val boxWidth = boxHeight * 0.66f              // proporción de una caja de cassette
+        val gap = 18.dp
+        val perRow = ((maxWidth - gap) / (boxWidth + gap)).toInt().coerceAtLeast(1)
+        val rows = remember(games, perRow) { games.chunked(perRow) }
+        // Siempre al menos tres baldas, aunque haya pocos juegos, para que parezca una estantería
+        val shelves = rows + List((3 - rows.size).coerceAtLeast(0)) { emptyList<Game>() }
+
+        LazyColumn(Modifier.fillMaxSize()) {
+            items(shelves.size) { r ->
+                Box(Modifier.fillMaxWidth().height(rowHeight)) {
+                    Image(
+                        painter = androidx.compose.ui.res.painterResource(com.zxsofa.R.drawable.shelf_tile),
+                        contentDescription = null,
+                        contentScale = ContentScale.FillBounds,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    Row(
+                        Modifier.fillMaxSize().padding(horizontal = gap),
+                        horizontalArrangement = Arrangement.spacedBy(gap),
+                    ) {
+                        shelves[r].forEach { g ->
+                            ShelfItem(g, boxWidth, boxHeight, rowHeight, onClick = { onOpen(g) })
+                        }
+                    }
                 }
             }
         }
@@ -262,57 +277,54 @@ fun ShelfView(games: List<Game>, onOpen: (Game) -> Unit) {
 }
 
 @Composable
-private fun CassetteSpine(game: Game, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun ShelfItem(game: Game, boxWidth: androidx.compose.ui.unit.Dp, boxHeight: androidx.compose.ui.unit.Dp,
+                      rowHeight: androidx.compose.ui.unit.Dp, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val isFocused by interaction.collectIsFocusedAsState()
-    val band = spineColors[(game.title.hashCode() and 0x7fffffff) % spineColors.size]
-    val shape = RoundedCornerShape(4.dp)
-    Card(
-        onClick = onClick,
-        interactionSource = interaction,
-        shape = shape,
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1C1C20)),
-        modifier = modifier
-            .fillMaxWidth()
-            .height(54.dp)
-            .graphicsLayer { translationY = if (isFocused) -6f else 0f }
-            .then(if (isFocused) Modifier.border(BorderStroke(3.dp, ZxColors.Yellow), shape) else Modifier),
-    ) {
-        Row(Modifier.fillMaxSize().padding(3.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.width(8.dp).fillMaxHeight().background(band, RoundedCornerShape(2.dp)))
-            Spacer(Modifier.width(4.dp))
-            GameCover(game.title, game.coverPath, Modifier.size(46.dp).clip(RoundedCornerShape(2.dp)), contentScale = ContentScale.Crop)
-            Spacer(Modifier.width(6.dp))
-            // Etiqueta de papel del canto
-            Column(
-                Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .background(Color(0xFFF1E9D2), RoundedCornerShape(2.dp))
-                    .padding(horizontal = 8.dp),
-                verticalArrangement = Arrangement.Center,
-            ) {
-                Text(
-                    game.title.uppercase(),
-                    color = Color(0xFF151515),
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+    val shape = RoundedCornerShape(3.dp)
+    Column(Modifier.width(boxWidth).fillMaxHeight()) {
+        // Hueco hasta que la caja apoya en la balda (al 80 % de la fila)
+        Spacer(Modifier.height(rowHeight * 0.80f - boxHeight))
+        Card(
+            onClick = onClick,
+            interactionSource = interaction,
+            shape = shape,
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF111111)),
+            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+            modifier = Modifier
+                .width(boxWidth)
+                .height(boxHeight)
+                .graphicsLayer {
+                    // La seleccionada se saca un poco de la balda
+                    translationY = if (isFocused) -14f else 0f
+                    val sc = if (isFocused) 1.06f else 1f
+                    scaleX = sc; scaleY = sc
+                }
+                .then(if (isFocused) Modifier.border(BorderStroke(3.dp, ZxColors.Yellow), shape) else Modifier),
+        ) {
+            Box(Modifier.fillMaxSize()) {
+                GameCover(game.title, game.coverPath, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                // Brillo de la caja de plástico
+                Box(
+                    Modifier.fillMaxSize().background(
+                        Brush.linearGradient(listOf(Color(0x33FFFFFF), Color.Transparent, Color(0x22000000)))
+                    )
                 )
-                val sub = listOfNotNull(game.publisher, game.year).joinToString(" · ")
-                if (sub.isNotBlank()) {
-                    Text(sub, color = Color(0xFF55504A), fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
+                // Bisagra de la caja a la izquierda
+                Box(Modifier.width(4.dp).fillMaxHeight().background(Color(0x55000000)))
             }
-            Spacer(Modifier.width(6.dp))
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                listOf(ZxColors.Red, ZxColors.Yellow, ZxColors.Green, ZxColors.Cyan).forEach {
-                    Box(Modifier.width(14.dp).height(5.dp).background(it))
-                }
-            }
-            Spacer(Modifier.width(4.dp))
         }
+        // Etiqueta en el canto de la balda
+        Spacer(Modifier.height(rowHeight * 0.075f))
+        Text(
+            game.title,
+            color = Color(0xFF2B1A0C),
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        )
     }
 }

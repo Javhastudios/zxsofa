@@ -21,7 +21,7 @@ class UploadServer(
     /** Recibe el nombre y el fichero recibido (temporal); devuelve el texto a mostrar en el navegador. */
     private val onFile: (name: String, file: File) -> String,
     /** Genera la copia de seguridad de la colección para descargarla. */
-    private val onBackup: () -> File?,
+    private val onBackup: (includeMagazines: Boolean) -> File?,
 ) {
     private var server: ServerSocket? = null
     @Volatile private var running = false
@@ -99,7 +99,7 @@ class UploadServer(
                         }
                     }
                     method == "GET" && path == "/backup.zip" -> {
-                        val f = onBackup()
+                        val f = onBackup(params["revistas"] == "1")
                         if (f == null || !f.exists()) {
                             respond(out, 500, "text/plain; charset=utf-8", "No se pudo crear la copia".toByteArray())
                         } else {
@@ -181,7 +181,8 @@ class UploadServer(
 <p>Elige o arrastra juegos de Spectrum (.tap, .tzx, .z80, .sna, .dsk, .zip…) revistas en PDF o POKEs (.pok, con el mismo título que el juego). Aparecerán en la tele al momento.</p>
 <label class="drop" id="drop"><input type="file" id="files" multiple hidden><p>Toca aquí para elegir archivos<br>o arrástralos encima</p><button type="button" onclick="document.getElementById('files').click()">Elegir juegos</button></label>
 <ul id="log"></ul>
-<p style="margin-top:32px"><a style="color:#f2d000" href="/backup.zip">⬇ Descargar copia de seguridad de esta colección</a><br>
+<p style="margin-top:32px"><a style="color:#f2d000" href="/backup.zip">⬇ Descargar copia de seguridad de esta colección</a> ·
+<a style="color:#f2d000" href="/backup.zip?revistas=1">con las revistas</a><br>
 <small>Juegos, carátulas, fichas y partidas en un .zip. Para restaurarla, súbela aquí o añádela con el botón + de la app.</small></p>
 <script>
 const log=document.getElementById('log'),drop=document.getElementById('drop');

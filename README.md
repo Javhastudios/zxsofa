@@ -59,10 +59,10 @@ Con un teclado físico conectado, las teclas van directas al Spectrum
 
 ## Índice de ZXDB
 
-`app/src/main/assets/zxdb_index.tsv.gz` es un extracto de [ZXDB](https://github.com/zxdb/ZXDB)
+`app/src/main/assets/zxdb_index.dat` es un extracto de [ZXDB](https://github.com/zxdb/ZXDB)
 (año, compañía, género, carátula, instrucciones y POKEs de unos 30.000 programas) para identificar
 los juegos sin depender de ninguna API. Para actualizarlo: descarga `ZXDB_mysql.sql.zip`, conviértelo
-con `scripts/ZXDB_to_SQLite.py` de ZXDB y ejecuta `python3 tools/zxdb_index.py zxdb.sqlite app/src/main/assets/zxdb_index.tsv.gz`.
+con `scripts/ZXDB_to_SQLite.py` de ZXDB y ejecuta `python3 tools/zxdb_index.py zxdb.sqlite app/src/main/assets/zxdb_index.dat`.
 
 ## Estructura
 

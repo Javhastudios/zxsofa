@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Genera app/src/main/assets/zxdb_index.tsv.gz a partir de una base SQLite de ZXDB
+Genera app/src/main/assets/zxdb_index.dat (gzip; sin extensión .gz porque Android la renombra al empaquetar) a partir de una base SQLite de ZXDB
 (https://github.com/zxdb/ZXDB, convertida con scripts/ZXDB_to_SQLite.py).
 
 Una línea por programa:
@@ -9,7 +9,7 @@ Una línea por programa:
 - claves: nombres de fichero de cintas/snapshots y títulos alternativos, normalizados
   (minúsculas, solo letras y números) para identificar los ficheros del usuario.
 
-Uso: python3 tools/zxdb_index.py zxdb.sqlite app/src/main/assets/zxdb_index.tsv.gz
+Uso: python3 tools/zxdb_index.py zxdb.sqlite app/src/main/assets/zxdb_index.dat
 """
 import gzip
 import re

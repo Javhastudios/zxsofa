@@ -233,7 +233,7 @@ class GameRepository(private val context: Context) {
             return "Encontrado por título en ZXDB: ${byTitle.title}"
         }
         val lr = finder.libretroCandidates(game.title, 1).firstOrNull()
-        if (lr != null && CoverFinder.normalize(lr.title) == target) {
+        if (lr != null && CoverFinder.normalize(lr.title) == target && game.coverPath == null) {
             setCover(game, lr.coverUrls)
             return "Portada encontrada en libretro"
         }
@@ -256,11 +256,14 @@ class GameRepository(private val context: Context) {
         )
         withContext(Dispatchers.IO) { db.update(g) }
 
+        // Las imágenes automáticas nunca sustituyen a las que ya tiene el juego (pueden ser tuyas);
+        // solo se cambian cuando eliges un candidato en «Buscar portada».
+        val manual = coverUrls != null
         val screen = screenUrls ?: entry.screen?.let { finder.mediaUrls(it) }
-        if (!screen.isNullOrEmpty()) g = setScreen(g, screen)
+        if (!screen.isNullOrEmpty() && (screenUrls != null || g.screenPath == null)) g = setScreen(g, screen)
 
         val cover = coverUrls ?: entry.inlays.firstOrNull()?.let { finder.mediaUrls(it) } ?: screen
-        if (!cover.isNullOrEmpty()) g = setCover(g, cover)
+        if (!cover.isNullOrEmpty() && (manual || g.coverPath == null)) g = setCover(g, cover)
         // Instrucciones de ZXDB, si el juego aún no tiene ninguna
         if (g.docs.isEmpty() && entry.instructions.isNotEmpty()) {
             try { g = downloadInstructions(g, entry) } catch (_: Exception) {}
@@ -529,8 +532,9 @@ class GameRepository(private val context: Context) {
      * Crea un .zip con toda la colección: un índice (zxsofa-backup.json) y, por
      * cada juego, sus cintas, carátula, pantalla de carga y partidas guardadas.
      */
-    suspend fun exportBackup(out: java.io.OutputStream) = withContext(Dispatchers.IO) {
+    suspend fun exportBackup(out: java.io.OutputStream, includeMagazines: Boolean = false) = withContext(Dispatchers.IO) {
         val list = db.all()
+        val mags = if (includeMagazines) db.magazines() else emptyList()
         val index = org.json.JSONArray()
         java.util.zip.ZipOutputStream(java.io.BufferedOutputStream(out)).use { zip ->
             fun put(entry: String, f: File) {
@@ -575,19 +579,33 @@ class GameRepository(private val context: Context) {
                     put("pok", if (g.pokPath != null && File(g.pokPath).exists()) "$dir/game.pok" else null)
                 })
             }
+            val magIndex = org.json.JSONArray()
+            for (m in mags) {
+                val dir = "m${m.id}"
+                put("$dir/${File(m.path).name}", File(m.path))
+                m.thumbPath?.let { put("$dir/portada.jpg", File(it)) }
+                magIndex.put(org.json.JSONObject().apply {
+                    put("title", m.title); put("pages", m.pages); put("lastPage", m.lastPage); put("addedAt", m.addedAt)
+                    put("file", "$dir/${File(m.path).name}")
+                    put("thumb", if (m.thumbPath != null && File(m.thumbPath).exists()) "$dir/portada.jpg" else null)
+                })
+            }
             zip.putNextEntry(java.util.zip.ZipEntry(BACKUP_INDEX))
-            zip.write(org.json.JSONObject().put("app", "ZX Sofa").put("version", 1).put("games", index).toString(1).toByteArray())
+            zip.write(org.json.JSONObject().put("app", "ZX Sofa").put("version", 1).put("games", index).put("magazines", magIndex).toString(1).toByteArray())
             zip.closeEntry()
         }
         list.size
     }
 
     /** Copia de seguridad en un fichero temporal (para enviarla por Wi-Fi o descargarla). */
-    suspend fun exportBackupToFile(): File = withContext(Dispatchers.IO) {
+    suspend fun exportBackupToFile(includeMagazines: Boolean = false): File = withContext(Dispatchers.IO) {
         val f = File(context.cacheDir, "coleccion-zxsofa.zip")
-        f.outputStream().use { exportBackup(it) }
+        f.outputStream().use { exportBackup(it, includeMagazines) }
         f
     }
+
+    /** Lo que ocupan todas las revistas (para avisar antes de incluirlas en la copia). */
+    fun magazinesSize(): Long = db.magazines().sumOf { File(it.path).length() }
 
     fun isBackup(file: File): Boolean = try {
         java.util.zip.ZipFile(file).use { it.getEntry(BACKUP_INDEX) != null }
@@ -664,6 +682,23 @@ class GameRepository(private val context: Context) {
                 db.update(base.copy(id = id, coverPath = cover?.absolutePath, screenPath = screen?.absolutePath,
                     docs = docPaths, pokPath = pok?.absolutePath))
                 added++
+            }
+            // Revistas (si la copia las incluye): se saltan las que ya están (mismo título y páginas)
+            root.optJSONArray("magazines")?.let { ms ->
+                val existing = db.magazines()
+                for (i in 0 until ms.length()) {
+                    val o = ms.getJSONObject(i)
+                    val title = o.optString("title")
+                    val pages = o.optInt("pages")
+                    if (existing.any { it.title == title && it.pages == pages }) continue
+                    val entry = JSONObjectStr(o, "file") ?: continue
+                    val dest = uniqueFile(magazinesDir, safeName(entry.substringAfterLast('/')))
+                    if (!extract(entry, dest)) continue
+                    val thumb = File(magazinesDir, "${dest.nameWithoutExtension}_portada.jpg").takeIf { extract(JSONObjectStr(o, "thumb"), it) }
+                    db.insertMagazine(Magazine(title = title, path = dest.absolutePath, thumbPath = thumb?.absolutePath,
+                        pages = pages, lastPage = o.optInt("lastPage"), addedAt = o.optLong("addedAt", System.currentTimeMillis())))
+                }
+                _magazines.value = db.magazines()
             }
         }
         _games.value = db.all()

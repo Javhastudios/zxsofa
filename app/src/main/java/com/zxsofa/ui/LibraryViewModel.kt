@@ -138,11 +138,13 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     var sendProgress by mutableStateOf<Float?>(null)
         private set
 
+    var backupMagazines by mutableStateOf(false)
+
     fun exportBackup(uri: Uri) {
         viewModelScope.launch {
             busy = true
             try {
-                val n = getApplication<Application>().contentResolver.openOutputStream(uri)?.use { repo.exportBackup(it) } ?: 0
+                val n = getApplication<Application>().contentResolver.openOutputStream(uri)?.use { repo.exportBackup(it, backupMagazines) } ?: 0
                 _messages.tryEmit("Copia guardada: $n juegos")
             } catch (e: Exception) {
                 _messages.tryEmit("No se pudo guardar la copia: ${e.message}")
@@ -157,7 +159,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             sendProgress = 0f
             try {
-                val file = repo.exportBackupToFile()
+                val file = repo.exportBackupToFile(backupMagazines)
                 val reply = sendFileTo(address, file, "coleccion-zxsofa.zip") { p -> sendProgress = p }
                 _messages.tryEmit("Colección enviada (${reply.trim()})")
                 file.delete()

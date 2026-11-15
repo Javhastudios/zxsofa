@@ -7,7 +7,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.util.zip.GZIPInputStream
 
-/** Una ficha del índice de ZXDB que lleva la app (assets/zxdb_index.tsv.gz). */
+/** Una ficha del índice de ZXDB que lleva la app (assets/zxdb_index.dat). */
 data class LocalEntry(
     val id: Int,
     val title: String,
@@ -51,7 +51,7 @@ object LocalZxdb {
 
     private suspend fun ensureLoaded(context: Context) = lock.withLock {
         if (entries.isNotEmpty()) return@withLock
-        withContext(Dispatchers.IO) { loadFrom(GZIPInputStream(context.assets.open("zxdb_index.tsv.gz"))) }
+        withContext(Dispatchers.IO) { loadFrom(GZIPInputStream(context.assets.open("zxdb_index.dat"))) }
     }
 
     /** Carga el índice (separado para poder probarlo fuera de Android). */

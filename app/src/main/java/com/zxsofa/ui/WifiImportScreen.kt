@@ -60,7 +60,7 @@ fun WifiImportScreen(vm: LibraryViewModel) {
             }
             received.add(0, "$name: $text")
             text
-        }, onBackup = { runBlocking { vm.repo.exportBackupToFile() } })
+        }, onBackup = { mags -> runBlocking { vm.repo.exportBackupToFile(mags) } })
         val discovery = Discovery(context)
         if (server.start()) {
             port = server.port

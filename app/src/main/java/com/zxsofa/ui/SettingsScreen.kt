@@ -121,6 +121,10 @@ private fun BackupSection(vm: LibraryViewModel) {
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
+    val magSize = remember { vm.repo.magazinesSize() }
+    if (magSize > 0) {
+        SwitchRow("Incluir las revistas (${magSize / (1024 * 1024)} MB)", vm.backupMagazines) { vm.backupMagazines = it }
+    }
     Spacer(Modifier.height(8.dp))
     FlowRowButtons {
         OutlinedButton(onClick = {

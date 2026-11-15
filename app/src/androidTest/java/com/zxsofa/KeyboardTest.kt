@@ -8,6 +8,9 @@ import android.view.InputDevice
 import android.view.MotionEvent
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -62,6 +65,35 @@ class KeyboardTest {
             listOf("key_R", "key_ENTER").forEach { tap(it) }
             Thread.sleep(1500)
             shot("KEYBV")
+        }
+    }
+
+    @Test
+    fun cargarJuegoDesdeElOrdenador() {
+        inst.uiAutomation.setRotation(android.app.UiAutomation.ROTATION_FREEZE_0)
+        val ctx = inst.targetContext
+        val repo = (ctx.applicationContext as ZXSofaApp).repository
+        // Una cinta con un programa BASIC que pinta el borde de verde y escribe un texto
+        val prog = byteArrayOf(0, 10, 9, 0, 0xE7.toByte(), 0x34, 0x0E, 0, 0, 4, 0, 0, 0x0D)
+        val hdr = byteArrayOf(0, 0) + "PRUEBA    ".toByteArray() + byteArrayOf(prog.size.toByte(), 0, 10, 0, prog.size.toByte(), 0)
+        fun block(b: ByteArray): ByteArray { var cs = 0; b.forEach { cs = cs xor it.toInt() }; val p = b + cs.toByte(); return byteArrayOf((p.size and 255).toByte(), (p.size shr 8).toByte()) + p }
+        val tap = block(hdr) + block(byteArrayOf(-1) + prog)
+        kotlinx.coroutines.runBlocking { repo.importBytes("Prueba Borde Verde.tap", tap); repo.refresh() }
+
+        ActivityScenario.launch<EmulatorActivity>(EmulatorActivity.freeIntent(ctx, Machine.SPEC48, false)).use {
+            Thread.sleep(5000)
+            compose.onAllNodesWithContentDescription("Menú")[0].performClick()
+            compose.waitForIdle()
+            compose.onAllNodesWithText("Cargar juego de la colección")[0].performClick()
+            compose.waitForIdle()
+            compose.onAllNodesWithText("Prueba Borde Verde", substring = true)[0].performClick()
+            compose.waitForIdle()
+            compose.onAllNodesWithText("Solo meter la cinta", substring = true)[0].performClick()
+            Thread.sleep(1500)
+            // LOAD "" ENTER
+            listOf("key_J", "key_\"", "key_\"", "key_ENTER").forEach { tap(it) }
+            Thread.sleep(4000)
+            shot("LOADV")
         }
     }
 }

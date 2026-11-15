@@ -95,6 +95,9 @@ int  zx_pok_set(int index, int active, int value);
 int  zx_tape_write(const char *path);
 int  zx_tape_present(void);
 
+/* Meter una cinta/snapshot en la máquina encendida (autoload: cargar ya). */
+int  zx_insert(const char *path, int autoload);
+
 /* Mensaje pendiente del nucleo (o NULL). Se vacia al leerlo. */
 const char *zx_take_message(void);
 

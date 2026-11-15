@@ -161,3 +161,18 @@ int zx_tape_present(void)
 {
    return zx_is_loaded() && tape_present();
 }
+
+/* Mete una cinta (o snapshot / disco) en la máquina encendida. Con autoload, Fuse
+   reinicia y carga solo; sin él, el usuario escribe LOAD "" como en el original. */
+#include "utils.h"
+int zx_insert(const char *path, int autoload)
+{
+   libspectrum_id_t type;
+   int error;
+   if (!zx_is_loaded())
+      return 0;
+   fuse_emulation_pause();
+   error = utils_open_file(path, autoload, &type);
+   fuse_emulation_unpause();
+   return error == 0;
+}

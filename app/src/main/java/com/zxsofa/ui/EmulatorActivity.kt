@@ -40,6 +40,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -106,6 +107,8 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
     /** Modelo cuando se enciende el Spectrum sin juego (null = jugando a un juego). */
     private var freeMachine by mutableStateOf<com.zxsofa.data.Machine?>(null)
     private var askProgramName by mutableStateOf(false)
+    private var showLoadList by mutableStateOf(false)
+    private var pickedGame by mutableStateOf<Game?>(null)
     private var catalog by mutableStateOf<List<TapeEntry>>(emptyList())
     private var showCatalog by mutableStateOf(false)
     private var showDocs by mutableStateOf(false)
@@ -136,7 +139,8 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
             override fun handleOnBackPressed() {
                 when {
                     menuOpen && askPoke != null -> askPoke = null
-                    menuOpen && (showCatalog || showDocs || showPokes) -> { showCatalog = false; showDocs = false; showPokes = false }
+                    menuOpen && pickedGame != null -> pickedGame = null
+                    menuOpen && (showCatalog || showDocs || showPokes || showLoadList) -> { showCatalog = false; showDocs = false; showPokes = false; showLoadList = false }
                     menuOpen -> closeMenu()
                     keyboardOpen -> keyboardOpen = false
                     else -> openMenu()
@@ -264,6 +268,8 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
         showPokes = false
         askPoke = null
         askProgramName = false
+        showLoadList = false
+        pickedGame = null
         engine.setPaused(false)
     }
 
@@ -288,6 +294,20 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
         }
         val g = game ?: return
         engine.loadState(app.repository.slotStateFile(g.id)) { ok -> toast(if (ok) "Partida cargada" else "No hay partida guardada") }
+        closeMenu()
+    }
+
+    /** Modo ordenador: mete la cinta de un juego de la colección. */
+    private fun insertGame(g: Game, autoload: Boolean) {
+        engine.insert(g.filePath, autoload) { ok ->
+            toast(
+                when {
+                    !ok -> "No se pudo meter la cinta"
+                    autoload -> "Cargando ${g.title}…"
+                    else -> "Cinta metida: escribe LOAD \"\" (J y dos comillas) y pulsa ENTER"
+                }
+            )
+        }
         closeMenu()
     }
 
@@ -552,7 +572,7 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
     @Composable
     private fun PauseMenu(hasTouch: Boolean) {
         val first = remember { FocusRequester() }
-        LaunchedEffect(showCatalog, showDocs, showPokes) { runCatching { first.requestFocus() } }
+        LaunchedEffect(showCatalog, showDocs, showPokes, showLoadList, pickedGame) { runCatching { first.requestFocus() } }
         val g = game
         Box(Modifier.fillMaxSize().background(Color(0xCC000000)), contentAlignment = Alignment.Center) {
             Column(
@@ -569,6 +589,7 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
                         showCatalog -> "Programas de la cinta"
                         showDocs -> "Instrucciones"
                         showPokes -> "POKEs"
+                        showLoadList -> "Cargar juego"
                         else -> freeMachine?.label ?: g?.title ?: "Pausa"
                     },
                     style = MaterialTheme.typography.titleLarge,
@@ -586,6 +607,27 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
                         FilledTonalButton(onClick = {
                             startActivity(MagazineActivity.docIntent(this@EmulatorActivity, path, java.io.File(path).name))
                         }, Modifier.fillMaxWidth()) { Text(java.io.File(path).name, maxLines = 1) }
+                    }
+                    return@Column
+                }
+                if (showLoadList) {
+                    val picked = pickedGame
+                    if (picked != null) {
+                        Text(picked.title, fontWeight = FontWeight.Bold)
+                        Button(onClick = { insertGame(picked, true) }, Modifier.fillMaxWidth().focusRequester(first)) { Text("Cargar ya") }
+                        FilledTonalButton(onClick = { insertGame(picked, false) }, Modifier.fillMaxWidth()) {
+                            Text("Solo meter la cinta (escribo LOAD \"\")")
+                        }
+                        TextButton(onClick = { pickedGame = null }, Modifier.fillMaxWidth()) { Text("Elegir otro") }
+                        return@Column
+                    }
+                    Button(onClick = { showLoadList = false }, Modifier.fillMaxWidth().focusRequester(first)) { Text("Volver") }
+                    val list = app.repository.games.value
+                    if (list.isEmpty()) Text("Tu colección está vacía.")
+                    list.forEach { gm ->
+                        FilledTonalButton(onClick = { pickedGame = gm }, Modifier.fillMaxWidth()) {
+                            Text(gm.title + (gm.year?.let { " ($it)" } ?: ""), maxLines = 1)
+                        }
                     }
                     return@Column
                 }
@@ -642,6 +684,7 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
                     }, Modifier.fillMaxWidth()) { Text("Instrucciones") }
                 }
                 if (freeMachine != null) {
+                    FilledTonalButton(onClick = { showLoadList = true }, Modifier.fillMaxWidth()) { Text("Cargar juego de la colección") }
                     if (askProgramName) {
                         var name by remember { mutableStateOf("") }
                         Text("Nombre del programa:", Modifier.padding(top = 4.dp))

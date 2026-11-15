@@ -20,6 +20,8 @@ object NativeCore {
     /** Guarda en un .tap la cinta actual (lo grabado con SAVE). */
     external fun nativeTapeWrite(path: String): Boolean
     external fun nativeTapePresent(): Boolean
+    /** Mete una cinta/snapshot en la máquina encendida; autoload = cargar ya. */
+    external fun nativeInsert(path: String, autoload: Boolean): Boolean
     external fun nativeUnload()
     external fun nativeReset()
 

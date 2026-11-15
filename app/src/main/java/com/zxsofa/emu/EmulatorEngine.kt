@@ -157,6 +157,8 @@ class EmulatorEngine(
         done(NativeCore.nativePokSet(index, active, value))
     }
 
+    fun insert(path: String, autoload: Boolean, done: (Boolean) -> Unit) = post { done(NativeCore.nativeInsert(path, autoload)) }
+
     /** Guarda lo grabado con SAVE en un fichero .tap. Devuelve false si no hay nada grabado. */
     fun writeTape(file: File, done: (Boolean) -> Unit) = post {
         done(NativeCore.nativeTapePresent() && NativeCore.nativeTapeWrite(file.absolutePath))

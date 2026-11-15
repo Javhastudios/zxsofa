@@ -202,7 +202,10 @@ private fun DocsAndPokes(vm: LibraryViewModel, game: Game) {
     val pickDocs = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { vm.addDocs(game, it) }
     val pickPok = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) vm.setPokFromUri(game, uri) }
 
-    val fullInlay = remember(game.docs) { vm.repo.fullInlay(game) }
+    val savedInlay = remember(game.docs) { vm.repo.fullInlay(game) }
+    // Se puede recortar si hay inlay guardado o si la portada actual es apaisada
+    val wideCover = remember(game.coverPath) { (com.zxsofa.net.CoverCrop.aspect(game.coverPath) ?: 0f) > 1.1f }
+    val fullInlay = savedInlay ?: if (wideCover) game.coverPath?.let { File(it) } else null
     var cropping by remember { mutableStateOf(false) }
     if (fullInlay != null) {
         OutlinedButton(onClick = { cropping = true }, modifier = Modifier.padding(top = 8.dp)) { Text("Ajustar o quitar el recorte de la carátula") }

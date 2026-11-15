@@ -365,9 +365,28 @@ class GameRepository(private val context: Context) {
         return g
     }
 
+    /**
+     * Imagen completa sobre la que recortar: la guardada en documentos o, si la carátula
+     * actual es apaisada y nunca se recortó, una copia de ella (que pasa a documentos).
+     */
+    suspend fun ensureFullInlay(game: Game): File? {
+        fullInlay(game)?.let { return it }
+        val cover = game.coverPath?.let { File(it) }?.takeIf { it.exists() } ?: return null
+        return imageLock.withLock {
+            withContext(Dispatchers.IO) {
+                val full = fullInlayFile(game.id)
+                cover.copyTo(full, overwrite = true)
+                val cur = db.get(game.id) ?: game
+                db.update(cur.copy(docs = listOf(full.absolutePath) + cur.docs.filter { it != full.absolutePath }))
+                _games.value = db.all()
+                full
+            }
+        }
+    }
+
     /** Recorte elegido a mano desde «Ajustar recorte». */
     suspend fun recropCover(game: Game, pos: Float): Game {
-        val full = fullInlay(game) ?: return game
+        val full = ensureFullInlay(game) ?: return game
         val dest = File(coversDir, "${game.id}_${System.currentTimeMillis()}_c.img")
         val ok = withContext(Dispatchers.Default) { com.zxsofa.net.CoverCrop.crop(full, pos, dest) }
         val g = if (ok) replaceImage(game, dest, isCover = true) else game

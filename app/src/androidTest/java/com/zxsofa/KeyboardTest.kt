@@ -7,7 +7,7 @@ import android.util.Log
 import android.view.InputDevice
 import android.view.MotionEvent
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
-import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -27,7 +27,7 @@ class KeyboardTest {
     private val inst = InstrumentationRegistry.getInstrumentation()
 
     private fun tap(tag: String) {
-        val b = compose.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().boundsInWindow
+        val b = compose.onAllNodesWithTag(tag, useUnmergedTree = true)[0].fetchSemanticsNode().boundsInWindow
         val x = (b.left + b.right) / 2
         val y = (b.top + b.bottom) / 2
         val t = SystemClock.uptimeMillis()

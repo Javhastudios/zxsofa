@@ -109,8 +109,8 @@ class KeyboardTest {
             repeat(4) {
                 compose.onAllNodesWithText("Joystick:", substring = true)[0].performClick()
                 compose.waitForIdle()
-                modos += compose.onAllNodesWithText("Joystick:", substring = true)[0].fetchSemanticsNode()
-                    .config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text)?.joinToString() ?: "?"
+                val cfg = compose.onAllNodesWithText("Joystick:", substring = true, useUnmergedTree = true)[0].fetchSemanticsNode().config
+                modos += cfg.getOrElse(androidx.compose.ui.semantics.SemanticsProperties.Text) { emptyList() }.joinToString()
             }
             Log.i("ZXSofaTest", "MODOS $modos")
             compose.onAllNodesWithText("Elegir las teclas")[0].performClick()

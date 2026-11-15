@@ -93,6 +93,8 @@ object LocalZxdb {
         }
     }
 
+    suspend fun preload(context: Context) = ensureLoaded(context)
+
     suspend fun byId(context: Context, zxdbId: String): LocalEntry? {
         ensureLoaded(context)
         val i = byId[zxdbId.trimStart('0').toIntOrNull() ?: return null] ?: return null

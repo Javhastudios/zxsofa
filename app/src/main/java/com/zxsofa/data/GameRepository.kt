@@ -7,6 +7,8 @@ import com.zxsofa.net.CoverCandidate
 import com.zxsofa.net.CoverFinder
 import com.zxsofa.net.ZxdbEntry
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
@@ -254,16 +256,27 @@ class GameRepository(private val context: Context) {
                 if (m == Machine.SPEC48 || m == Machine.SPEC16) game.machine else m
             } ?: game.machine,
         )
-        withContext(Dispatchers.IO) { db.update(g) }
+        // Los datos se ven al momento; las imágenes y documentos llegan después
+        withContext(Dispatchers.IO) {
+            db.update(g)
+            _games.value = db.all()
+        }
 
         // Las imágenes automáticas nunca sustituyen a las que ya tiene el juego (pueden ser tuyas);
         // solo se cambian cuando eliges un candidato en «Buscar portada».
         val manual = coverUrls != null
         val screen = screenUrls ?: entry.screen?.let { finder.mediaUrls(it) }
-        if (!screen.isNullOrEmpty() && (screenUrls != null || g.screenPath == null)) g = setScreen(g, screen)
-
         val cover = coverUrls ?: entry.inlays.firstOrNull()?.let { finder.mediaUrls(it) } ?: screen
-        if (!cover.isNullOrEmpty() && (manual || g.coverPath == null)) g = setCover(g, cover)
+        val wantScreen = !screen.isNullOrEmpty() && (screenUrls != null || g.screenPath == null)
+        val wantCover = !cover.isNullOrEmpty() && (manual || g.coverPath == null)
+        // Carátula y pantalla de carga a la vez
+        kotlinx.coroutines.coroutineScope {
+            val c = if (wantCover) async { setCover(g, cover!!) } else null
+            if (wantScreen) setScreen(g, screen!!)
+            c?.await()
+        }
+        g = withContext(Dispatchers.IO) { db.get(g.id) } ?: g
+        withContext(Dispatchers.IO) { _games.value = db.all() }
         // Instrucciones de ZXDB, si el juego aún no tiene ninguna
         if (g.docs.isEmpty() && entry.instructions.isNotEmpty()) {
             try { g = downloadInstructions(g, entry) } catch (_: Exception) {}
@@ -312,14 +325,17 @@ class GameRepository(private val context: Context) {
         replaceImage(game, dest, isCover = true).also { _games.value = db.all() }
     }
 
-    private suspend fun replaceImage(game: Game, file: File, isCover: Boolean): Game = withContext(Dispatchers.IO) {
+    // Carátula y pantalla se descargan a la vez: la escritura en la base de datos va de una en una
+    private val imageLock = kotlinx.coroutines.sync.Mutex()
+
+    private suspend fun replaceImage(game: Game, file: File, isCover: Boolean): Game = imageLock.withLock { withContext(Dispatchers.IO) {
         val current = db.get(game.id) ?: game
         val old = if (isCover) current.coverPath else current.screenPath
         val updated = if (isCover) current.copy(coverPath = file.absolutePath) else current.copy(screenPath = file.absolutePath)
         db.update(updated)
         if (old != null && old != file.absolutePath) File(old).delete()
         updated
-    }
+    } }
 
     // ---------------------------------------------------------- editar
 

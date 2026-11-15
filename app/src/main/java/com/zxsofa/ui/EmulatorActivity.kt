@@ -610,6 +610,8 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
         val first = remember { FocusRequester() }
         LaunchedEffect(showCatalog, showDocs, showPokes, showLoadList, pickedGame, showKeys) { runCatching { first.requestFocus() } }
         val g = game
+        // El menú no va dentro de un Surface: fijamos el color del texto para que se lea sobre el fondo oscuro
+        androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
         Box(Modifier.fillMaxSize().background(Color(0xCC000000)), contentAlignment = Alignment.Center) {
             Column(
                 Modifier
@@ -798,6 +800,7 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+        }
         }
     }
 }

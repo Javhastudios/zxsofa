@@ -40,17 +40,32 @@ class GameRepository(private val context: Context) {
         /** Era otra cara/cinta de un juego que ya estaba: se ha unido a él. */
         data class AddedSide(val game: Game) : ImportResult()
         data class Error(val message: String) : ImportResult()
+        /** Era una copia de seguridad de ZX Sofá: se han añadido [added] juegos. */
+        data class Backup(val added: Int, val skipped: Int) : ImportResult()
     }
 
     suspend fun importUri(uri: Uri): ImportResult = withContext(Dispatchers.IO) {
+        val name = displayName(uri) ?: uri.lastPathSegment ?: "juego.tap"
+        val tmp = File.createTempFile("import", ".bin", context.cacheDir)
         try {
-            val name = displayName(uri) ?: uri.lastPathSegment ?: "juego.tap"
-            val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            context.contentResolver.openInputStream(uri)?.use { input -> tmp.outputStream().use { input.copyTo(it) } }
                 ?: return@withContext ImportResult.Error("No se pudo leer $name")
-            importBytes(name, bytes)
+            importFile(name, tmp)
         } catch (e: Exception) {
             ImportResult.Error(e.message ?: "Error al importar")
+        } finally {
+            tmp.delete()
         }
+    }
+
+    /** Importa un fichero ya guardado en disco: un juego o una copia de seguridad completa. */
+    suspend fun importFile(name: String, file: File): ImportResult = withContext(Dispatchers.IO) {
+        if (isBackup(file)) {
+            val (added, skipped) = importBackup(file)
+            return@withContext ImportResult.Backup(added, skipped)
+        }
+        if (file.length() > MAX_FILE_SIZE) return@withContext ImportResult.Error("$name es demasiado grande")
+        importBytes(name, file.readBytes())
     }
 
     suspend fun importBytes(originalName: String, data: ByteArray): ImportResult = withContext(Dispatchers.IO) {
@@ -298,6 +313,135 @@ class GameRepository(private val context: Context) {
     fun autoStateFile(gameId: Long) = File(statesDir, "${gameId}_auto.state")
     fun slotStateFile(gameId: Long, slot: Int = 1) = File(statesDir, "${gameId}_slot$slot.state")
 
+
+    // ------------------------------------------------- copia de seguridad
+
+    /**
+     * Crea un .zip con toda la colección: un índice (zxsofa-backup.json) y, por
+     * cada juego, sus cintas, carátula, pantalla de carga y partidas guardadas.
+     */
+    suspend fun exportBackup(out: java.io.OutputStream) = withContext(Dispatchers.IO) {
+        val list = db.all()
+        val index = org.json.JSONArray()
+        java.util.zip.ZipOutputStream(java.io.BufferedOutputStream(out)).use { zip ->
+            fun put(entry: String, f: File) {
+                if (!f.exists()) return
+                zip.putNextEntry(java.util.zip.ZipEntry(entry))
+                f.inputStream().use { it.copyTo(zip) }
+                zip.closeEntry()
+            }
+            for (g in list) {
+                val dir = "g${g.id}"
+                val files = org.json.JSONArray()
+                g.allFiles.forEachIndexed { i, path ->
+                    val entry = "$dir/files/$i-${File(path).name}"
+                    put(entry, File(path))
+                    files.put(entry)
+                }
+                val states = org.json.JSONArray()
+                statesDir.listFiles { f -> f.name.startsWith("${g.id}_") }?.forEach { f ->
+                    val entry = "$dir/states/${f.name.removePrefix("${g.id}_")}"
+                    put(entry, f)
+                    states.put(entry)
+                }
+                g.coverPath?.let { put("$dir/cover.img", File(it)) }
+                g.screenPath?.let { put("$dir/screen.img", File(it)) }
+                index.put(org.json.JSONObject().apply {
+                    put("title", g.title); put("fileName", g.fileName); put("md5", g.md5)
+                    put("files", files); put("states", states)
+                    put("cover", if (g.coverPath != null && File(g.coverPath).exists()) "$dir/cover.img" else null)
+                    put("screen", if (g.screenPath != null && File(g.screenPath).exists()) "$dir/screen.img" else null)
+                    put("year", g.year); put("publisher", g.publisher); put("genre", g.genre)
+                    put("machine", g.machine.coreValue); put("controls", g.controls.serialize())
+                    put("zxdbId", g.zxdbId); put("favorite", g.favorite); put("addedAt", g.addedAt)
+                    put("lastPlayed", g.lastPlayed); put("playCount", g.playCount); put("notes", g.notes)
+                })
+            }
+            zip.putNextEntry(java.util.zip.ZipEntry(BACKUP_INDEX))
+            zip.write(org.json.JSONObject().put("app", "ZX Sofa").put("version", 1).put("games", index).toString(1).toByteArray())
+            zip.closeEntry()
+        }
+        list.size
+    }
+
+    /** Copia de seguridad en un fichero temporal (para enviarla por Wi-Fi o descargarla). */
+    suspend fun exportBackupToFile(): File = withContext(Dispatchers.IO) {
+        val f = File(context.cacheDir, "coleccion-zxsofa.zip")
+        f.outputStream().use { exportBackup(it) }
+        f
+    }
+
+    fun isBackup(file: File): Boolean = try {
+        java.util.zip.ZipFile(file).use { it.getEntry(BACKUP_INDEX) != null }
+    } catch (e: Exception) {
+        false
+    }
+
+    /** Añade los juegos de una copia de seguridad que no estén ya (se compara la huella MD5). */
+    suspend fun importBackup(file: File): Pair<Int, Int> = withContext(Dispatchers.IO) {
+        var added = 0
+        var skipped = 0
+        java.util.zip.ZipFile(file).use { zip ->
+            val root = org.json.JSONObject(zip.getInputStream(zip.getEntry(BACKUP_INDEX)).use { String(it.readBytes()) })
+            val arr = root.optJSONArray("games") ?: org.json.JSONArray()
+            fun extract(entry: String?, dest: File): Boolean {
+                if (entry.isNullOrBlank()) return false
+                val e = zip.getEntry(entry) ?: return false
+                dest.parentFile?.mkdirs()
+                zip.getInputStream(e).use { input -> dest.outputStream().use { input.copyTo(it) } }
+                return true
+            }
+            fun JSONObjectStr(o: org.json.JSONObject, k: String): String? =
+                if (o.isNull(k)) null else o.optString(k).takeIf { it.isNotBlank() }
+
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                val md5 = o.optString("md5")
+                if (md5.isNotBlank() && db.findByMd5(md5) != null) { skipped++; continue }
+                val entries = o.optJSONArray("files") ?: continue
+                val paths = (0 until entries.length()).mapNotNull { j ->
+                    val entry = entries.getString(j)
+                    val name = entry.substringAfterLast('/').substringAfter('-')
+                    val dest = uniqueFile(gamesDir, safeName(name))
+                    if (extract(entry, dest)) dest.absolutePath else null
+                }
+                if (paths.isEmpty()) continue
+                val base = Game(
+                    title = o.optString("title").ifBlank { guessTitle(File(paths[0]).name) },
+                    fileName = o.optString("fileName").ifBlank { File(paths[0]).name },
+                    filePath = paths[0],
+                    extraFiles = paths.drop(1),
+                    md5 = md5.ifBlank { md5(File(paths[0]).readBytes()) },
+                    year = JSONObjectStr(o, "year"),
+                    publisher = JSONObjectStr(o, "publisher"),
+                    genre = JSONObjectStr(o, "genre"),
+                    machine = Machine.fromCore(JSONObjectStr(o, "machine")),
+                    controls = ControlConfig.parse(JSONObjectStr(o, "controls")),
+                    zxdbId = JSONObjectStr(o, "zxdbId"),
+                    favorite = o.optBoolean("favorite"),
+                    addedAt = o.optLong("addedAt", System.currentTimeMillis()),
+                    lastPlayed = o.optLong("lastPlayed"),
+                    playCount = o.optInt("playCount"),
+                    notes = JSONObjectStr(o, "notes"),
+                )
+                val id = db.insert(base)
+                val stamp = System.currentTimeMillis()
+                val cover = File(coversDir, "${id}_$stamp.img").takeIf { extract(JSONObjectStr(o, "cover"), it) }
+                val screen = File(screensDir, "${id}_$stamp.img").takeIf { extract(JSONObjectStr(o, "screen"), it) }
+                o.optJSONArray("states")?.let { st ->
+                    for (j in 0 until st.length()) {
+                        val entry = st.getString(j)
+                        extract(entry, File(statesDir, "${id}_${entry.substringAfterLast('/')}"))
+                    }
+                }
+                db.update(base.copy(id = id, coverPath = cover?.absolutePath, screenPath = screen?.absolutePath))
+                added++
+            }
+        }
+        _games.value = db.all()
+        added to skipped
+    }
+
     // --------------------------------------------------------- ayudas
 
     private fun displayName(uri: Uri): String? = try {
@@ -325,6 +469,7 @@ class GameRepository(private val context: Context) {
         /** Formatos que acepta el núcleo Fuse, en orden de preferencia dentro de un zip. */
         val SUPPORTED = listOf("tzx", "tap", "pzx", "z80", "szx", "sna", "dsk", "trd", "scl", "rzx", "dck", "csw")
         const val MAX_FILE_SIZE = 32 * 1024 * 1024
+        const val BACKUP_INDEX = "zxsofa-backup.json"
 
         fun md5(bytes: ByteArray): String =
             MessageDigest.getInstance("MD5").digest(bytes).joinToString("") { "%02x".format(it) }

@@ -12,6 +12,7 @@ import com.zxsofa.ZXSofaApp
 import com.zxsofa.data.Game
 import com.zxsofa.data.GameRepository
 import com.zxsofa.net.CoverCandidate
+import com.zxsofa.net.sendFileTo
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -85,6 +86,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
                     is GameRepository.ImportResult.Added -> { added++; toIdentify += r.game }
                     is GameRepository.ImportResult.Duplicate -> _messages.tryEmit("Ya estaba en la colección: ${r.game.title}")
                     is GameRepository.ImportResult.AddedSide -> _messages.tryEmit("Nueva cinta añadida a ${r.game.title} (${r.game.allFiles.size} en total)")
+                    is GameRepository.ImportResult.Backup -> _messages.tryEmit(backupText(r))
                     is GameRepository.ImportResult.Error -> _messages.tryEmit(r.message)
                 }
             }
@@ -103,7 +105,48 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
             }
             is GameRepository.ImportResult.Duplicate -> _messages.tryEmit("Ya estaba en la colección: ${result.game.title}")
             is GameRepository.ImportResult.AddedSide -> _messages.tryEmit("Nueva cinta añadida a ${result.game.title}")
+            is GameRepository.ImportResult.Backup -> _messages.tryEmit(backupText(result))
             is GameRepository.ImportResult.Error -> _messages.tryEmit(result.message)
+        }
+    }
+
+    private fun backupText(r: GameRepository.ImportResult.Backup) =
+        "Colección importada: ${r.added} juegos nuevos" + if (r.skipped > 0) " (${r.skipped} ya estaban)" else ""
+
+    // ------------------------------------------------ copia de seguridad
+
+    /** Progreso del envío de la colección (0..1), o null si no se está enviando. */
+    var sendProgress by mutableStateOf<Float?>(null)
+        private set
+
+    fun exportBackup(uri: Uri) {
+        viewModelScope.launch {
+            busy = true
+            try {
+                val n = getApplication<Application>().contentResolver.openOutputStream(uri)?.use { repo.exportBackup(it) } ?: 0
+                _messages.tryEmit("Copia guardada: $n juegos")
+            } catch (e: Exception) {
+                _messages.tryEmit("No se pudo guardar la copia: ${e.message}")
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    fun sendCollection(address: String) {
+        if (sendProgress != null) return
+        viewModelScope.launch {
+            sendProgress = 0f
+            try {
+                val file = repo.exportBackupToFile()
+                val reply = sendFileTo(address, file, "coleccion-zxsofa.zip") { p -> sendProgress = p }
+                _messages.tryEmit("Colección enviada (${reply.trim()})")
+                file.delete()
+            } catch (e: Exception) {
+                _messages.tryEmit("No se pudo enviar a $address: ${e.message ?: "sin conexión"}")
+            } finally {
+                sendProgress = null
+            }
         }
     }
 

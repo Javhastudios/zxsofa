@@ -30,7 +30,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zxsofa.data.GameRepository
+import com.zxsofa.net.Discovery
 import com.zxsofa.net.UploadServer
+import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.runBlocking
 
 @Composable
@@ -39,13 +41,16 @@ fun WifiImportScreen(vm: LibraryViewModel) {
     var failed by remember { mutableStateOf(false) }
     val received = remember { mutableStateListOf<String>() }
     val addresses = remember { UploadServer.localAddresses() }
+    val context = LocalContext.current
 
     DisposableEffect(Unit) {
-        val server = UploadServer { name, data ->
+        val server = UploadServer(context.cacheDir, onFile = { name, file ->
             // Hilo del servidor: importamos de forma síncrona y avisamos a la interfaz
-            val result = runBlocking { vm.repo.importBytes(name, data) }
+            val result = runBlocking { vm.repo.importFile(name, file) }
             vm.onReceived(result)
             val text = when (result) {
+                is GameRepository.ImportResult.Backup -> "colección recibida: ${result.added} juegos nuevos" +
+                    if (result.skipped > 0) " (${result.skipped} ya estaban)" else ""
                 is GameRepository.ImportResult.Added -> "añadido ✔"
                 is GameRepository.ImportResult.Duplicate -> "ya estaba en la colección"
                 is GameRepository.ImportResult.AddedSide -> "añadido como otra cara de ${result.game.title} ✔"
@@ -53,9 +58,16 @@ fun WifiImportScreen(vm: LibraryViewModel) {
             }
             received.add(0, "$name: $text")
             text
+        }, onBackup = { runBlocking { vm.repo.exportBackupToFile() } })
+        val discovery = Discovery(context)
+        if (server.start()) {
+            port = server.port
+            discovery.advertise(server.port)
+        } else failed = true
+        onDispose {
+            discovery.stop()
+            server.stop()
         }
-        if (server.start()) port = server.port else failed = true
-        onDispose { server.stop() }
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -83,7 +95,9 @@ fun WifiImportScreen(vm: LibraryViewModel) {
                         )
                     }
                     Text(
-                        "Elige allí los juegos y aparecerán en tu colección. Deja esta pantalla abierta mientras los envías.",
+                        "Elige allí los juegos y aparecerán en tu colección. Deja esta pantalla abierta mientras los envías.\n\n" +
+                            "Para pasar la colección entera desde otro móvil o tablet con ZX Sofá: allí entra en Ajustes → «Enviar colección a otro dispositivo». " +
+                            "Esta pantalla también ofrece en esa página web un enlace para descargar una copia de seguridad.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }

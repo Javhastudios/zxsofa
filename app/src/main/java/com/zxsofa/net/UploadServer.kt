@@ -2,6 +2,7 @@ package com.zxsofa.net
 
 import android.util.Log
 import java.io.BufferedInputStream
+import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.Inet4Address
@@ -16,8 +17,11 @@ import java.net.URLDecoder
  * selector de archivos). Solo funciona mientras la pantalla está abierta.
  */
 class UploadServer(
-    /** Recibe nombre y contenido; devuelve el texto a mostrar en el navegador. */
-    private val onFile: (name: String, data: ByteArray) -> String,
+    private val tempDir: File,
+    /** Recibe el nombre y el fichero recibido (temporal); devuelve el texto a mostrar en el navegador. */
+    private val onFile: (name: String, file: File) -> String,
+    /** Genera la copia de seguridad de la colección para descargarla. */
+    private val onBackup: () -> File?,
 ) {
     private var server: ServerSocket? = null
     @Volatile private var running = false
@@ -76,15 +80,34 @@ class UploadServer(
                     method == "GET" && (path == "/" || path == "/index.html") ->
                         respond(out, 200, "text/html; charset=utf-8", PAGE.toByteArray())
                     method == "POST" && path == "/upload" -> {
-                        val len = headers["content-length"]?.toIntOrNull() ?: -1
-                        if (len <= 0 || len > 32 * 1024 * 1024) {
+                        val len = headers["content-length"]?.toLongOrNull() ?: -1L
+                        if (len <= 0 || len > MAX_UPLOAD) {
                             respond(out, 413, "text/plain; charset=utf-8", "Fichero vacío o demasiado grande".toByteArray())
                             return
                         }
-                        val body = readFully(input, len)
                         val name = params["name"]?.ifBlank { null } ?: "juego.tap"
-                        val msg = onFile(name, body)
-                        respond(out, 200, "text/plain; charset=utf-8", msg.toByteArray())
+                        val tmp = File.createTempFile("upload", ".bin", tempDir)
+                        try {
+                            if (!copyBody(input, len, tmp)) {
+                                respond(out, 400, "text/plain; charset=utf-8", "Transferencia incompleta".toByteArray())
+                                return
+                            }
+                            val msg = onFile(name, tmp)
+                            respond(out, 200, "text/plain; charset=utf-8", msg.toByteArray())
+                        } finally {
+                            tmp.delete()
+                        }
+                    }
+                    method == "GET" && path == "/backup.zip" -> {
+                        val f = onBackup()
+                        if (f == null || !f.exists()) {
+                            respond(out, 500, "text/plain; charset=utf-8", "No se pudo crear la copia".toByteArray())
+                        } else {
+                            out.write(("HTTP/1.1 200 OK\r\nContent-Type: application/zip\r\nContent-Length: ${f.length()}\r\n" +
+                                "Content-Disposition: attachment; filename=\"coleccion-zxsofa.zip\"\r\nConnection: close\r\n\r\n").toByteArray())
+                            f.inputStream().use { it.copyTo(out) }
+                            out.flush()
+                        }
                     }
                     else -> respond(out, 404, "text/plain", "No encontrado".toByteArray())
                 }
@@ -105,25 +128,30 @@ class UploadServer(
         }
     }
 
-    private fun readFully(input: InputStream, len: Int): ByteArray {
-        val buf = ByteArray(len)
-        var off = 0
-        while (off < len) {
-            val n = input.read(buf, off, len - off)
-            if (n < 0) break
-            off += n
+    private fun copyBody(input: InputStream, len: Long, dest: File): Boolean {
+        val buf = ByteArray(64 * 1024)
+        var left = len
+        dest.outputStream().use { o ->
+            while (left > 0) {
+                val n = input.read(buf, 0, minOf(buf.size.toLong(), left).toInt())
+                if (n < 0) break
+                o.write(buf, 0, n)
+                left -= n
+            }
         }
-        return if (off == len) buf else buf.copyOf(off)
+        return left == 0L
     }
 
     private fun respond(out: OutputStream, code: Int, type: String, body: ByteArray) {
-        val status = when (code) { 200 -> "OK"; 404 -> "Not Found"; 413 -> "Payload Too Large"; else -> "Error" }
+        val status = when (code) { 200 -> "OK"; 400 -> "Bad Request"; 404 -> "Not Found"; 413 -> "Payload Too Large"; else -> "Error" }
         out.write("HTTP/1.1 $code $status\r\nContent-Type: $type\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n".toByteArray())
         out.write(body)
         out.flush()
     }
 
     companion object {
+        const val MAX_UPLOAD = 2L * 1024 * 1024 * 1024
+
         /** Direcciones IPv4 locales del dispositivo (Wi-Fi / Ethernet). */
         fun localAddresses(): List<String> = try {
             NetworkInterface.getNetworkInterfaces().toList()
@@ -153,6 +181,8 @@ class UploadServer(
 <p>Elige o arrastra juegos de Spectrum (.tap, .tzx, .z80, .sna, .dsk, .zip…). Aparecerán en la tele al momento.</p>
 <label class="drop" id="drop"><input type="file" id="files" multiple hidden><p>Toca aquí para elegir archivos<br>o arrástralos encima</p><button type="button" onclick="document.getElementById('files').click()">Elegir juegos</button></label>
 <ul id="log"></ul>
+<p style="margin-top:32px"><a style="color:#f2d000" href="/backup.zip">⬇ Descargar copia de seguridad de esta colección</a><br>
+<small>Juegos, carátulas, fichas y partidas en un .zip. Para restaurarla, súbela aquí o añádela con el botón + de la app.</small></p>
 <script>
 const log=document.getElementById('log'),drop=document.getElementById('drop');
 async function send(files){for(const f of files){const li=document.createElement('li');li.textContent=f.name+'…';log.prepend(li);

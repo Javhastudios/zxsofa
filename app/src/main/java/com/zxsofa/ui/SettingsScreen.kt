@@ -1,6 +1,23 @@
 package com.zxsofa.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalContext
+import com.zxsofa.net.Discovery
+import com.zxsofa.net.PeerDevice
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -64,6 +81,9 @@ fun SettingsScreen(vm: LibraryViewModel) {
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             SwitchRow("Guardar al salir para poder «Continuar»", autoSave) { autoSave = it; s.autoSave = it }
 
+            SectionTitle("Copia de seguridad y otros dispositivos")
+            BackupSection(vm)
+
             SectionTitle("Acerca de")
             Text(
                 "ZX Sofá usa el emulador Fuse (Free Unix Spectrum Emulator, © Philip Kendall y otros) a través de su versión " +
@@ -83,4 +103,85 @@ private fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Un
         Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
         Switch(checked = checked, onCheckedChange = onChange)
     }
+}
+
+@Composable
+private fun BackupSection(vm: LibraryViewModel) {
+    val context = LocalContext.current
+    var sending by remember { mutableStateOf(false) }
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        if (uri != null) vm.exportBackup(uri)
+    }
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) vm.importUris(listOf(uri))
+    }
+
+    Text(
+        "Guarda toda la colección (juegos, carátulas, fichas y partidas) en un único .zip, o pásala a otro dispositivo con ZX Sofá.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Spacer(Modifier.height(8.dp))
+    FlowRowButtons {
+        OutlinedButton(onClick = {
+            runCatching { exportLauncher.launch("coleccion-zxsofa.zip") }
+                .onFailure { vm.message("Este dispositivo no permite guardar archivos. Usa «Desde otro dispositivo» y descarga la copia desde el navegador.") }
+        }) { Text("Exportar colección") }
+        OutlinedButton(onClick = {
+            runCatching { importLauncher.launch(arrayOf("application/zip", "*/*")) }
+                .onFailure { vm.message("Este dispositivo no tiene selector de archivos. Recibe la colección con «Desde otro dispositivo».") }
+        }) { Text("Importar colección") }
+        Button(onClick = { sending = !sending }) { Text(if (sending) "Cerrar envío" else "Enviar colección a otro dispositivo") }
+    }
+
+    if (sending) {
+        var devices by remember { mutableStateOf<List<PeerDevice>>(emptyList()) }
+        var manual by remember { mutableStateOf("") }
+        DisposableEffect(Unit) {
+            val d = Discovery(context)
+            d.discover { devices = it }
+            onDispose { d.stop() }
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "En el otro dispositivo (la tele, por ejemplo) abre ZX Sofá → «Desde otro dispositivo» (icono Wi-Fi). Aparecerá aquí:",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        val progress = vm.sendProgress
+        if (progress != null) {
+            Text("Enviando… ${(progress * 100).toInt()} %", Modifier.padding(top = 8.dp))
+            LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+        }
+        if (devices.isEmpty()) {
+            Row(Modifier.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                Spacer(Modifier.width(10.dp))
+                Text("Buscando dispositivos en la red…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        devices.forEach { dev ->
+            FilledTonalButton(
+                onClick = { vm.sendCollection(dev.address) },
+                enabled = progress == null,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+            ) { Text("Enviar a ${dev.name}") }
+        }
+        Text("¿No aparece? Escribe la dirección que muestra la otra pantalla:", Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodySmall)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(
+                value = manual,
+                onValueChange = { manual = it },
+                singleLine = true,
+                placeholder = { Text("192.168.1.40:8080") },
+                modifier = Modifier.weight(1f),
+            )
+            Button(onClick = { vm.sendCollection(manual) }, enabled = manual.isNotBlank() && progress == null) { Text("Enviar") }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FlowRowButtons(content: @Composable () -> Unit) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { content() }
 }

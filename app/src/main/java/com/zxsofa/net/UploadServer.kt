@@ -197,7 +197,7 @@ class UploadServer(
 <style>
  body{font-family:system-ui,sans-serif;background:#0e0e10;color:#eee;max-width:640px;margin:0 auto;padding:24px}
  h1{margin:0 0 4px}.stripes{display:flex;gap:0;margin-bottom:20px}.stripes i{width:24px;height:10px;display:block}
- .drop{border:3px dashed #00c8e8;border-radius:14px;padding:40px 16px;text-align:center;cursor:pointer}
+ .drop{display:block;border:3px dashed #00c8e8;border-radius:14px;padding:40px 16px;text-align:center;cursor:pointer}
  .drop.over{background:#00c8e822} button{font-size:18px;padding:12px 20px;border-radius:10px;border:0;background:#00c8e8;color:#000}
  li{margin:6px 0} .ok{color:#7f7} .err{color:#f77}
 </style></head><body>

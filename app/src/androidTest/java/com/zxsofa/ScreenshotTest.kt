@@ -39,17 +39,21 @@ class ScreenshotTest {
             }
             repo.refresh()
         }
-        for (mode in listOf("SHELF", "GRID", "CAROUSEL", "LIST")) {
+        val shots = listOf("SHELF" to false, "SHELF" to true, "CAROUSEL" to true, "GRID" to false, "LIST" to false)
+        for ((mode, landscape) in shots) {
             Settings(ctx).catalogView = mode
+            inst.uiAutomation.setRotation(if (landscape) android.app.UiAutomation.ROTATION_FREEZE_90 else android.app.UiAutomation.ROTATION_FREEZE_0)
+            Thread.sleep(1500)
             ActivityScenario.launch(MainActivity::class.java).use {
-                Thread.sleep(4000)
+                Thread.sleep(5000)
                 val bmp = inst.uiAutomation.takeScreenshot()
-                val small = Bitmap.createScaledBitmap(bmp, bmp.width / 2, bmp.height / 2, true)
+                val small = Bitmap.createScaledBitmap(bmp, bmp.width * 2 / 5, bmp.height * 2 / 5, true)
                 val out = ByteArrayOutputStream()
-                small.compress(Bitmap.CompressFormat.JPEG, 70, out)
+                small.compress(Bitmap.CompressFormat.JPEG, 75, out)
                 val b64 = Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
-                b64.chunked(3000).forEachIndexed { i, c -> Log.i("ZXSofaShot", "$mode|$i|$c") }
-                Log.i("ZXSofaShot", "$mode|END")
+                val tag = mode + if (landscape) "H" else "V"
+                b64.chunked(3000).forEachIndexed { i, c -> Log.i("ZXSofaShot", "$tag|$i|$c") }
+                Log.i("ZXSofaShot", "$tag|END")
             }
         }
     }

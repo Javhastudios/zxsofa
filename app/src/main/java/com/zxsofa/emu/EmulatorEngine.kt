@@ -14,6 +14,9 @@ import android.view.SurfaceHolder
 import java.io.File
 import java.util.concurrent.ConcurrentLinkedQueue
 
+/** Entrada del catálogo de la cinta: P = programa, G = grupo (TZX), T = texto. */
+data class TapeEntry(val block: Int, val kind: Char, val text: String)
+
 /** Qué cargar y con qué opciones del núcleo. */
 data class LaunchConfig(
     val gamePath: String,
@@ -101,6 +104,18 @@ class EmulatorEngine(
 
     /** Cambia a otra cinta/cara sin reiniciar el Spectrum. */
     fun selectTape(index: Int, done: (Boolean) -> Unit) = post { done(NativeCore.nativeTapeSelect(index)) }
+
+    /** Lee los programas grabados en la cinta actual. */
+    fun tapeCatalog(done: (List<TapeEntry>) -> Unit) = post {
+        val list = NativeCore.nativeTapeCatalog().lineSequence().mapNotNull { line ->
+            val p = line.split('\t')
+            if (p.size < 3) null else p[0].toIntOrNull()?.let { TapeEntry(it, p[1].firstOrNull() ?: 'T', p[2]) }
+        }.toList()
+        done(list)
+    }
+
+    /** Reinicia y carga la cinta desde el bloque indicado. */
+    fun loadFromBlock(block: Int, done: (Boolean) -> Unit) = post { done(NativeCore.nativeTapeLoadBlock(block)) }
 
     fun setJoystickType(type: Int) = post { NativeCore.nativeSetJoystickType(type) }
 

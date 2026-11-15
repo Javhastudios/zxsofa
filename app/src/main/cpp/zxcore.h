@@ -73,6 +73,12 @@ int  zx_tape_count(void);
 int  zx_tape_index(void);
 int  zx_tape_select(unsigned index);
 
+/* Catálogo de la cinta actual: una línea por entrada "bloque\ttipo\ttexto",
+   tipo P = programa BASIC, G = inicio de grupo (TZX), T = texto/comentario. */
+const char *zx_tape_catalog(void);
+/* Reinicia y carga la cinta a partir del bloque indicado. */
+int  zx_tape_load_block(int block);
+
 /* Mensaje pendiente del nucleo (o NULL). Se vacia al leerlo. */
 const char *zx_take_message(void);
 

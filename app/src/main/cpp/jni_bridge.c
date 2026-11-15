@@ -165,3 +165,13 @@ JNIEXPORT jboolean JNICALL FN(nativeTapeSelect)(JNIEnv *env, jobject thiz, jint 
 {
    return zx_tape_select((unsigned)index) ? JNI_TRUE : JNI_FALSE;
 }
+
+JNIEXPORT jstring JNICALL FN(nativeTapeCatalog)(JNIEnv *env, jobject thiz)
+{
+   return (*env)->NewStringUTF(env, zx_tape_catalog());
+}
+
+JNIEXPORT jboolean JNICALL FN(nativeTapeLoadBlock)(JNIEnv *env, jobject thiz, jint block)
+{
+   return zx_tape_load_block(block) ? JNI_TRUE : JNI_FALSE;
+}

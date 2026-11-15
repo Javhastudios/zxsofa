@@ -39,4 +39,8 @@ object NativeCore {
     external fun nativeTapeCount(): Int
     external fun nativeTapeIndex(): Int
     external fun nativeTapeSelect(index: Int): Boolean
+
+    // Catálogo de la cinta (recopilatorios) y carga desde un bloque
+    external fun nativeTapeCatalog(): String
+    external fun nativeTapeLoadBlock(block: Int): Boolean
 }

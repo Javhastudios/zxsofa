@@ -70,6 +70,7 @@ import com.zxsofa.emu.CoreOptions
 import com.zxsofa.emu.EmulatorEngine
 import com.zxsofa.emu.LaunchConfig
 import com.zxsofa.emu.Pad
+import com.zxsofa.emu.TapeEntry
 import com.zxsofa.emu.ZxKeyboard
 import kotlinx.coroutines.launch
 import java.io.File
@@ -94,6 +95,8 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
     private var touchHidden by mutableStateOf(false)
     private var joyMode by mutableStateOf(JoyMode.KEMPSTON)
     private var tapeIndex by mutableStateOf(0)
+    private var catalog by mutableStateOf<List<TapeEntry>>(emptyList())
+    private var showCatalog by mutableStateOf(false)
     private var started = false
 
     // Entrada física
@@ -117,6 +120,7 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 when {
+                    menuOpen && showCatalog -> showCatalog = false
                     menuOpen -> closeMenu()
                     keyboardOpen -> keyboardOpen = false
                     else -> openMenu()
@@ -191,10 +195,12 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
         engine.setHardwareMask(0)
         engine.setTouchMask(0)
         engine.setPaused(true)
+        engine.tapeCatalog { list -> runOnUiThread { catalog = list } }
     }
 
     private fun closeMenu() {
         menuOpen = false
+        showCatalog = false
         engine.setPaused(false)
     }
 
@@ -224,6 +230,13 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
                     toast("No se pudo cambiar de cinta")
                 }
             }
+        }
+        closeMenu()
+    }
+
+    private fun loadProgram(entry: TapeEntry) {
+        engine.loadFromBlock(entry.block) { ok ->
+            toast(if (ok) "Cargando ${entry.text}…" else "No se pudo cargar desde ese punto")
         }
         closeMenu()
     }
@@ -421,9 +434,29 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
     }
 
     @Composable
+    private fun TapeCatalogList(first: FocusRequester) {
+        LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+        Text(
+            "Elige desde dónde cargar: el Spectrum se reinicia y carga ese programa.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Button(onClick = { showCatalog = false }, Modifier.fillMaxWidth().focusRequester(first)) { Text("Volver") }
+        catalog.forEach { e ->
+            when (e.kind) {
+                'P' -> FilledTonalButton(onClick = { loadProgram(e) }, Modifier.fillMaxWidth()) { Text(e.text) }
+                'G' -> FilledTonalButton(onClick = { loadProgram(e) }, Modifier.fillMaxWidth()) {
+                    Text("▸ ${e.text}", fontWeight = FontWeight.Bold)
+                }
+                else -> Text(e.text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+
+    @Composable
     private fun PauseMenu(hasTouch: Boolean) {
         val first = remember { FocusRequester() }
-        LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+        LaunchedEffect(showCatalog) { runCatching { first.requestFocus() } }
         val g = game
         Box(Modifier.fillMaxSize().background(Color(0xCC000000)), contentAlignment = Alignment.Center) {
             Column(
@@ -435,10 +468,19 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
                     .padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text(g?.title ?: "Pausa", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(if (showCatalog) "Programas de la cinta" else g?.title ?: "Pausa", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 RainbowStripes(stripe = 4.dp)
                 Spacer(Modifier.height(4.dp))
+                if (showCatalog) {
+                    TapeCatalogList(first)
+                    return@Column
+                }
                 Button(onClick = { closeMenu() }, Modifier.fillMaxWidth().focusRequester(first)) { Text("Continuar") }
+                if (catalog.count { it.kind == 'P' } >= 2) {
+                    FilledTonalButton(onClick = { showCatalog = true }, Modifier.fillMaxWidth()) {
+                        Text("Elegir programa de la cinta (${catalog.count { it.kind == 'P' }})")
+                    }
+                }
                 if (g != null && g.extraFiles.isNotEmpty()) {
                     Text("Cinta en el cassette:", style = MaterialTheme.typography.labelLarge)
                     g.allFiles.forEachIndexed { i, path ->

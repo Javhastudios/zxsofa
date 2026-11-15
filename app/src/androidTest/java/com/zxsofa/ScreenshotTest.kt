@@ -40,6 +40,19 @@ class ScreenshotTest {
             repo.refresh()
         }
         val shots = listOf<Pair<String, Boolean>>()
+        // Carrusel en vertical: dos capturas separadas para ver que el destacado rota
+        Settings(ctx).catalogView = "CAROUSEL"
+        inst.uiAutomation.setRotation(android.app.UiAutomation.ROTATION_FREEZE_0)
+        ActivityScenario.launch(MainActivity::class.java).use {
+            for (n in 1..2) {
+                Thread.sleep(if (n == 1) 3000 else 7000)
+                val bmp = inst.uiAutomation.takeScreenshot()
+                val small = Bitmap.createScaledBitmap(bmp, bmp.width * 2 / 5, bmp.height * 2 / 5, true)
+                val out = ByteArrayOutputStream()
+                small.compress(Bitmap.CompressFormat.JPEG, 70, out)
+                Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP).chunked(3000).forEachIndexed { i, c -> Log.i("ZXSofaShot", "ROT${n}V|$i|$c") }
+            }
+        }
         for ((mode, landscape) in shots) {
             Settings(ctx).catalogView = mode
             inst.uiAutomation.setRotation(if (landscape) android.app.UiAutomation.ROTATION_FREEZE_90 else android.app.UiAutomation.ROTATION_FREEZE_0)

@@ -1,6 +1,13 @@
 package com.zxsofa.ui
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.clickable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.background
@@ -101,12 +108,35 @@ private fun carouselRows(games: List<Game>): List<Pair<String, List<Game>>> {
 fun CarouselView(games: List<Game>, onOpen: (Game) -> Unit, onPlay: (Game) -> Unit) {
     var focused by remember { mutableStateOf<Game?>(null) }
     val rows = remember(games) { carouselRows(games) }
-    val hero = focused?.let { f -> games.firstOrNull { it.id == f.id } } ?: games.firstOrNull()
+
+    // El destacado va rotando solo entre los juegos (con imagen, en orden aleatorio).
+    // Si eliges uno con el mando, se queda ese un rato y luego sigue rotando.
+    val rotation = remember(games.map { it.id }.toSet()) {
+        games.filter { it.coverPath != null || it.screenPath != null }.ifEmpty { games }.shuffled()
+    }
+    var rotIndex by remember { mutableIntStateOf(0) }
+    var lastFocusAt by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(rotation) {
+        while (true) {
+            delay(6000)
+            if (rotation.size > 1 && System.currentTimeMillis() - lastFocusAt > 10_000) {
+                focused = null
+                rotIndex = (rotIndex + 1) % rotation.size
+            }
+        }
+    }
+    val hero = focused?.let { f -> games.firstOrNull { it.id == f.id } }
+        ?: rotation.getOrNull(rotIndex % maxOf(1, rotation.size))?.let { r -> games.firstOrNull { it.id == r.id } }
+        ?: games.firstOrNull()
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
     val heroHeight = if (maxHeight < 420.dp) 0.dp else if (maxHeight < 600.dp) 120.dp else 170.dp
     Column(Modifier.fillMaxSize()) {
-        if (hero != null && heroHeight > 0.dp) CarouselHero(hero, heroHeight)
+        if (hero != null && heroHeight > 0.dp) {
+            Crossfade(targetState = hero, animationSpec = tween(700), label = "destacado") { h ->
+                CarouselHero(h, heroHeight, onClick = { onOpen(h) })
+            }
+        }
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
             items(rows, key = { it.first }) { (title, list) ->
                 Text(
@@ -120,7 +150,7 @@ fun CarouselView(games: List<Game>, onOpen: (Game) -> Unit, onPlay: (Game) -> Un
                     horizontalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     items(list, key = { it.id }) { g ->
-                        CarouselCard(g, onFocus = { focused = g }, onClick = { onOpen(g) })
+                        CarouselCard(g, onFocus = { focused = g; lastFocusAt = System.currentTimeMillis() }, onClick = { onOpen(g) })
                     }
                 }
             }
@@ -130,8 +160,8 @@ fun CarouselView(games: List<Game>, onOpen: (Game) -> Unit, onPlay: (Game) -> Un
 }
 
 @Composable
-private fun CarouselHero(game: Game, height: androidx.compose.ui.unit.Dp) {
-    Box(Modifier.fillMaxWidth().height(height)) {
+private fun CarouselHero(game: Game, height: androidx.compose.ui.unit.Dp, onClick: () -> Unit) {
+    Box(Modifier.fillMaxWidth().height(height).clickable(onClick = onClick)) {
         // Fondo: la pantalla de carga (o la portada) difuminada en oscuro
         GameCover(
             game.title,

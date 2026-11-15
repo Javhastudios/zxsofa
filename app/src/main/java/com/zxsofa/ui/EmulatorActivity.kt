@@ -109,6 +109,9 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
     private var askProgramName by mutableStateOf(false)
     private var showLoadList by mutableStateOf(false)
     private var pickedGame by mutableStateOf<Game?>(null)
+    /** Modo ordenador: juego cuya cinta está metida (para poder cambiar de cara). */
+    private var insertedGame by mutableStateOf<Game?>(null)
+    private var insertedTape by mutableStateOf(0)
     private var catalog by mutableStateOf<List<TapeEntry>>(emptyList())
     private var showCatalog by mutableStateOf(false)
     private var showDocs by mutableStateOf(false)
@@ -300,6 +303,7 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
     /** Modo ordenador: mete la cinta de un juego de la colección. */
     private fun insertGame(g: Game, autoload: Boolean) {
         engine.insert(g.filePath, autoload) { ok ->
+            if (ok) runOnUiThread { insertedGame = g; insertedTape = 0 }
             toast(
                 when {
                     !ok -> "No se pudo meter la cinta"
@@ -307,6 +311,18 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
                     else -> "Cinta metida: escribe LOAD \"\" (J y dos comillas) y pulsa ENTER"
                 }
             )
+        }
+        closeMenu()
+    }
+
+    /** Modo ordenador: cambia a otra cinta/cara del juego metido, sin reiniciar. */
+    private fun insertTape(index: Int) {
+        val g = insertedGame ?: return
+        val path = g.allFiles.getOrNull(index) ?: return
+        val label = Sides.label(java.io.File(path).name, index)
+        engine.insert(path, false) { ok ->
+            if (ok) runOnUiThread { insertedTape = index }
+            toast(if (ok) "$label insertada" else "No se pudo cambiar de cinta")
         }
         closeMenu()
     }
@@ -684,6 +700,19 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
                     }, Modifier.fillMaxWidth()) { Text("Instrucciones") }
                 }
                 if (freeMachine != null) {
+                    val ins = insertedGame
+                    if (ins != null && ins.extraFiles.isNotEmpty()) {
+                        Text("Cinta en el cassette (${ins.title}):", style = MaterialTheme.typography.labelLarge)
+                        ins.allFiles.forEachIndexed { i, path ->
+                            val label = Sides.label(java.io.File(path).name, i)
+                            if (i == insertedTape) {
+                                Button(onClick = { closeMenu() }, Modifier.fillMaxWidth()) { Text("▶ $label") }
+                            } else {
+                                FilledTonalButton(onClick = { insertTape(i) }, Modifier.fillMaxWidth()) { Text("Poner $label") }
+                            }
+                        }
+                        Spacer(Modifier.height(4.dp))
+                    }
                     FilledTonalButton(onClick = { showLoadList = true }, Modifier.fillMaxWidth()) { Text("Cargar juego de la colección") }
                     if (askProgramName) {
                         var name by remember { mutableStateOf("") }

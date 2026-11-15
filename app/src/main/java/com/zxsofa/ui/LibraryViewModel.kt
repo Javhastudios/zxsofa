@@ -28,6 +28,14 @@ sealed class Screen {
     data object WifiImport : Screen()
 }
 
+enum class ViewMode(val label: String) {
+    GRID("Portadas"), CAROUSEL("Carrusel"), LIST("Lista"), SHELF("Estantería");
+
+    companion object {
+        fun from(name: String) = entries.firstOrNull { it.name == name } ?: GRID
+    }
+}
+
 enum class Filter(val label: String) { ALL("Todos"), FAVORITES("Favoritos"), RECENT("Recientes") }
 
 class LibraryViewModel(app: Application) : AndroidViewModel(app) {
@@ -50,6 +58,13 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     var filter by mutableStateOf(Filter.ALL)
     var busy by mutableStateOf(false)
         private set
+
+    var viewMode by mutableStateOf(ViewMode.from(settings.catalogView))
+        private set
+    fun changeViewMode(m: ViewMode) {
+        viewMode = m
+        settings.catalogView = m.name
+    }
 
     /** Identificaciones en curso (para mostrar un indicador en la tarjeta). */
     val identifying = mutableStateListOf<Long>()

@@ -46,6 +46,10 @@ class Settings(context: Context) {
         get() = prefs.getBoolean("autoSave", true)
         set(v) = prefs.edit().putBoolean("autoSave", v).apply()
 
+    var catalogView: String
+        get() = prefs.getString("catalogView", "GRID") ?: "GRID"
+        set(v) = prefs.edit().putString("catalogView", v).apply()
+
     var sortOrder: String
         get() = prefs.getString("sort", "title") ?: "title"
         set(v) = prefs.edit().putString("sort", v).apply()

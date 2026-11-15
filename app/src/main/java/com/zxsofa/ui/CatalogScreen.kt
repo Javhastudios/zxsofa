@@ -51,12 +51,13 @@ import androidx.compose.ui.unit.dp
 import com.zxsofa.data.Game
 
 @Composable
-fun CatalogScreen(vm: LibraryViewModel, onAddFile: () -> Unit, onOpen: (Game) -> Unit) {
+fun CatalogScreen(vm: LibraryViewModel, onAddFile: () -> Unit, onOpen: (Game) -> Unit, onPlay: (Game) -> Unit) {
     val all by vm.games.collectAsState()
     val games = vm.visibleGames(all)
 
     Column(Modifier.fillMaxSize()) {
         AppHeader("ZX Sofá") {
+            ViewModeButton(vm.viewMode) { vm.changeViewMode(it) }
             IconButton(onClick = onAddFile) { Icon(Icons.Default.Add, "Añadir juegos desde archivo") }
             IconButton(onClick = { vm.navigate(Screen.WifiImport) }) { Icon(Icons.Default.Wifi, "Añadir desde otro dispositivo") }
             IconButton(onClick = { vm.navigate(Screen.Settings) }) { Icon(Icons.Default.Settings, "Ajustes") }
@@ -92,16 +93,21 @@ fun CatalogScreen(vm: LibraryViewModel, onAddFile: () -> Unit, onOpen: (Game) ->
             Text("Ningún juego coincide", Modifier.padding(24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
 
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(150.dp),
-            contentPadding = PaddingValues(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            items(games, key = { it.id }) { g ->
-                GameCard(g, identifying = g.id in vm.identifying, onClick = { onOpen(g) })
+        when (vm.viewMode) {
+            ViewMode.GRID -> LazyVerticalGrid(
+                columns = GridCells.Adaptive(150.dp),
+                contentPadding = PaddingValues(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                items(games, key = { it.id }) { g ->
+                    GameCard(g, identifying = g.id in vm.identifying, onClick = { onOpen(g) })
+                }
             }
+            ViewMode.CAROUSEL -> CarouselView(games, onOpen, onPlay)
+            ViewMode.LIST -> ListView(games, vm.identifying, onOpen, onPlay)
+            ViewMode.SHELF -> ShelfView(games, onOpen)
         }
     }
 }

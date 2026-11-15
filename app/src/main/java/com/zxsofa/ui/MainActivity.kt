@@ -76,7 +76,12 @@ private fun MainContent(vm: LibraryViewModel, onPlay: (Game, Boolean) -> Unit) {
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             when (val s = vm.current) {
-                Screen.Catalog -> CatalogScreen(vm, onAddFile = openPicker, onOpen = { vm.navigate(Screen.Detail(it.id)) })
+                Screen.Catalog -> CatalogScreen(
+                    vm,
+                    onAddFile = openPicker,
+                    onOpen = { vm.navigate(Screen.Detail(it.id)) },
+                    onPlay = { onPlay(it, vm.repo.autoStateFile(it.id).exists()) },
+                )
                 is Screen.Detail -> DetailScreen(vm, s.gameId, onPlay = onPlay)
                 is Screen.Edit -> EditScreen(vm, s.gameId)
                 is Screen.CoverSearch -> CoverSearchScreen(vm, s.gameId)

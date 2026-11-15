@@ -75,6 +75,13 @@ fun SettingsScreen(vm: LibraryViewModel) {
             Slider(value = opacity, onValueChange = { opacity = it }, onValueChangeFinished = { s.controlsOpacity = opacity }, valueRange = 0.15f..1f)
             SwitchRow("Vibración al pulsar", vibration) { vibration = it; s.vibration = it }
 
+            SectionTitle("Carátulas")
+            Text(
+                "Algunas carátulas de ZXDB son el inlay entero desplegado. Este botón deja solo la portada (y guarda el inlay completo en los documentos de cada juego).",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedButton(onClick = { vm.fixWideCovers() }, modifier = Modifier.padding(top = 6.dp)) { Text("Arreglar carátulas desplegadas") }
+
             SectionTitle("Carga y partidas")
             SwitchRow("Carga rápida de cintas", fastLoad) { fastLoad = it; s.fastLoad = it }
             Text("Desactívala para ver (y oír) las franjas de carga como en el original.",

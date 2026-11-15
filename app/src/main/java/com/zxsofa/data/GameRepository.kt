@@ -326,7 +326,68 @@ class GameRepository(private val context: Context) {
     suspend fun setCover(game: Game, urls: List<String>): Game {
         val dest = File(coversDir, "${game.id}_${System.currentTimeMillis()}.img")
         if (!finder.download(urls, dest)) return game
+        if (com.zxsofa.net.CoverCrop.isWide(dest)) return handleWideCover(game, dest)
         return replaceImage(game, dest, isCover = true)
+    }
+
+    /** Nombre con el que guardamos el inlay completo entre los documentos del juego. */
+    private fun fullInlayFile(id: Long) = File(docsDir(id), "Caratula completa.jpg")
+
+    fun fullInlay(game: Game): File? = game.docs.map { File(it) }.firstOrNull { it.name.startsWith("Caratula completa") && it.exists() }
+
+    /**
+     * Carátula desplegada: se guarda entera en los documentos y como portada se usa la de
+     * libretro (si hay una con el mismo título) o el recorte automático por color.
+     */
+    private suspend fun handleWideCover(game: Game, wideFile: File): Game {
+        var g = imageLock.withLock { withContext(Dispatchers.IO) {
+            val full = fullInlayFile(game.id)
+            wideFile.copyTo(full, overwrite = true)
+            val cur = db.get(game.id) ?: game
+            val withDoc = if (full.absolutePath in cur.docs) cur else cur.copy(docs = listOf(full.absolutePath) + cur.docs)
+            db.update(withDoc)
+            withDoc
+        } }
+        val lr = finder.libretroCandidates(g.title, 1).firstOrNull()
+        if (lr != null && CoverFinder.normalize(lr.title) == CoverFinder.normalize(g.title)) {
+            val front = File(coversDir, "${g.id}_${System.currentTimeMillis()}_lr.img")
+            if (finder.download(lr.coverUrls, front)) {
+                wideFile.delete()
+                return replaceImage(g, front, isCover = true)
+            }
+        }
+        val cropped = File(coversDir, "${g.id}_${System.currentTimeMillis()}_c.img")
+        val ok = withContext(Dispatchers.Default) {
+            com.zxsofa.net.CoverCrop.crop(wideFile, com.zxsofa.net.CoverCrop.guess(wideFile), cropped)
+        }
+        wideFile.delete()
+        if (ok) g = replaceImage(g, cropped, isCover = true)
+        return g
+    }
+
+    /** Recorte elegido a mano desde «Ajustar recorte». */
+    suspend fun recropCover(game: Game, pos: Float): Game {
+        val full = fullInlay(game) ?: return game
+        val dest = File(coversDir, "${game.id}_${System.currentTimeMillis()}_c.img")
+        val ok = withContext(Dispatchers.Default) { com.zxsofa.net.CoverCrop.crop(full, pos, dest) }
+        val g = if (ok) replaceImage(game, dest, isCover = true) else game
+        refresh()
+        return g
+    }
+
+    /** Arregla las carátulas desplegadas que ya estaban descargadas. Devuelve cuántas. */
+    suspend fun fixWideCovers(): Int {
+        var n = 0
+        for (g in withContext(Dispatchers.IO) { db.all() }) {
+            val cover = g.coverPath?.let { File(it) } ?: continue
+            if (!cover.exists() || !com.zxsofa.net.CoverCrop.isWide(cover)) continue
+            val tmp = File(coversDir, "${g.id}_${System.currentTimeMillis()}_w.img")
+            withContext(Dispatchers.IO) { cover.copyTo(tmp, overwrite = true) }
+            handleWideCover(g, tmp)
+            n++
+        }
+        refresh()
+        return n
     }
 
     private suspend fun setScreen(game: Game, urls: List<String>): Game {

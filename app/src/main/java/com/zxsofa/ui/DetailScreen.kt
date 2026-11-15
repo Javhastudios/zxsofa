@@ -3,6 +3,13 @@ package com.zxsofa.ui
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.material3.Slider
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import java.io.File
@@ -195,6 +202,15 @@ private fun DocsAndPokes(vm: LibraryViewModel, game: Game) {
     val pickDocs = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { vm.addDocs(game, it) }
     val pickPok = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) vm.setPokFromUri(game, uri) }
 
+    val fullInlay = remember(game.docs) { vm.repo.fullInlay(game) }
+    var cropping by remember { mutableStateOf(false) }
+    if (fullInlay != null) {
+        OutlinedButton(onClick = { cropping = true }, modifier = Modifier.padding(top = 8.dp)) { Text("Ajustar recorte de la carátula") }
+    }
+    if (cropping && fullInlay != null) {
+        CropDialog(fullInlay, onDismiss = { cropping = false }, onSave = { pos -> cropping = false; vm.recropCover(game, pos) })
+    }
+
     SectionTitle("Instrucciones y documentos")
     if (game.docs.isEmpty()) {
         Text("Sin documentos. Búscalos en ZXDB o añade los tuyos (PDF, TXT o imágenes).", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -244,4 +260,46 @@ private fun DocsAndPokes(vm: LibraryViewModel, game: Game) {
             confirmButton = { TextButton(onClick = { choosePok = false }) { Text("Cerrar") } },
         )
     }
+}
+
+/** Elegir qué parte del inlay desplegado es la portada. */
+@Composable
+private fun CropDialog(full: File, onDismiss: () -> Unit, onSave: (Float) -> Unit) {
+    val bmp = remember(full) {
+        val o = android.graphics.BitmapFactory.Options().apply { inSampleSize = 2 }
+        android.graphics.BitmapFactory.decodeFile(full.absolutePath, o)
+    }
+    val initial = remember(full) { com.zxsofa.net.CoverCrop.guess(full) }
+    var pos by remember(full) { mutableStateOf(initial) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Ajustar recorte") },
+        text = {
+            Column {
+                if (bmp != null) {
+                    val ratio = bmp.width.toFloat() / bmp.height
+                    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth().aspectRatio(ratio)) {
+                        androidx.compose.foundation.Image(
+                            bitmap = bmp.asImageBitmap(),
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        val winW = maxHeight * com.zxsofa.net.CoverCrop.RATIO
+                        val x = (maxWidth - winW) * pos
+                        // Oscurecemos lo que queda fuera del recorte
+                        Box(Modifier.width(x).fillMaxHeight().background(Color(0x99000000)))
+                        Box(Modifier.padding(start = x + winW).fillMaxSize().background(Color(0x99000000)))
+                        Box(
+                            Modifier.padding(start = x).width(winW).fillMaxHeight()
+                                .border(3.dp, ZxColors.Yellow)
+                        )
+                    }
+                }
+                Text("Mueve el recuadro hasta la portada:", Modifier.padding(top = 10.dp))
+                Slider(value = pos, onValueChange = { pos = it })
+            }
+        },
+        confirmButton = { TextButton(onClick = { onSave(pos) }) { Text("Guardar") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
+    )
 }

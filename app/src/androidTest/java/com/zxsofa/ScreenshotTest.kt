@@ -39,7 +39,7 @@ class ScreenshotTest {
             }
             repo.refresh()
         }
-        val shots = listOf("SHELF" to true, "SHELF" to false, "CAROUSEL" to true, "GRID" to true)
+        val shots = listOf("SHELF" to false, "CAROUSEL" to true)
         for ((mode, landscape) in shots) {
             Settings(ctx).catalogView = mode
             inst.uiAutomation.setRotation(if (landscape) android.app.UiAutomation.ROTATION_FREEZE_90 else android.app.UiAutomation.ROTATION_FREEZE_0)

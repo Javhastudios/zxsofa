@@ -53,9 +53,6 @@ fun GameCover(title: String, path: String?, modifier: Modifier = Modifier, conte
                 model = File(path),
                 contentDescription = title,
                 contentScale = contentScale,
-                // Al recortar, nos quedamos con la derecha: en los inlays escaneados abiertos
-                // (contraportada | lomo | portada) la portada es la parte derecha
-                alignment = if (contentScale == ContentScale.Crop) Alignment.CenterEnd else Alignment.Center,
                 modifier = Modifier.fillMaxSize(),
             )
         } else {

@@ -212,6 +212,18 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
 
     fun removePok(game: Game) = viewModelScope.launch { repo.removePok(game) }
 
+    fun recropCover(game: Game, pos: Float) = viewModelScope.launch {
+        repo.recropCover(game, pos)
+        _messages.tryEmit("Recorte guardado")
+    }
+
+    fun fixWideCovers() = viewModelScope.launch {
+        busy = true
+        val n = try { repo.fixWideCovers() } catch (e: Exception) { 0 }
+        busy = false
+        _messages.tryEmit(if (n == 0) "No hay carátulas desplegadas que arreglar" else "Arregladas $n carátulas. Puedes ajustar el recorte en cada ficha.")
+    }
+
     fun addTapes(game: Game, uris: List<Uri>) {
         if (uris.isEmpty()) return
         viewModelScope.launch {

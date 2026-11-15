@@ -444,6 +444,21 @@ class GameRepository(private val context: Context) {
     fun autoStateFile(gameId: Long) = File(statesDir, "${gameId}_auto.state")
     fun slotStateFile(gameId: Long, slot: Int = 1) = File(statesDir, "${gameId}_slot$slot.state")
 
+    /** Partidas del Spectrum sin juego ("auto" al salir, "slot1" a mano), una por modelo. */
+    fun freeStateFile(machine: Machine, kind: String) = File(statesDir, "free_${machine.name}_$kind.state")
+
+    /** Guarda en la colección una cinta grabada con SAVE desde el Spectrum sin juego. */
+    suspend fun addRecordedTape(name: String, tape: File): ImportResult = withContext(Dispatchers.IO) {
+        val clean = name.trim().ifBlank { "Mi programa" }
+        val r = importBytes("$clean.tap", tape.readBytes())
+        if (r is ImportResult.Added) {
+            val g = r.game.copy(title = clean, genre = "Mi programa")
+            db.update(g)
+            _games.value = db.all()
+            ImportResult.Added(g)
+        } else r
+    }
+
 
     // ------------------------------------------------ instrucciones y POKEs
 

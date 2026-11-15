@@ -15,6 +15,11 @@ object NativeCore {
     external fun nativeClearOptions()
     external fun nativeSetOption(key: String, value: String)
     external fun nativeLoad(path: String): Boolean
+    /** Enciende el Spectrum sin cargar nada. */
+    external fun nativeLoadEmpty(): Boolean
+    /** Guarda en un .tap la cinta actual (lo grabado con SAVE). */
+    external fun nativeTapeWrite(path: String): Boolean
+    external fun nativeTapePresent(): Boolean
     external fun nativeUnload()
     external fun nativeReset()
 

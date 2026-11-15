@@ -27,6 +27,25 @@ object CoreOptions {
         return o
     }
 
+    /** Spectrum encendido sin juego (para programar). */
+    fun forFree(machine: com.zxsofa.data.Machine, settings: Settings): Map<String, String> {
+        val o = linkedMapOf(
+            "fuse_machine" to machine.coreValue,
+            "fuse_auto_machine" to "disabled",
+            "fuse_size_border" to settings.border.coreValue,
+            "fuse_auto_load" to "disabled",
+            "fuse_fast_load" to if (settings.fastLoad) "enabled" else "disabled",
+            "fuse_load_sound" to "enabled",
+            "fuse_speaker_type" to "tv speaker",
+            "fuse_ay_stereo_separation" to "acb",
+            "fuse_display_joystick_type" to "disabled",
+            "fuse_key_ovrlay_transp" to "enabled",
+            "fuse_key_hold_time" to "300",
+        )
+        o.putAll(joypadMapping(ControlConfig()))
+        return o
+    }
+
     /** Mapeo del joypad a teclas (solo en modo "Teclas personalizadas") y botones extra. */
     fun joypadMapping(c: ControlConfig): Map<String, String> {
         val none = "<none>"

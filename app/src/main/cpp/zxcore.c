@@ -353,6 +353,24 @@ int zx_load(const char *path)
    return 1;
 }
 
+/* Enciende el Spectrum sin cargar nada (para programar en BASIC, por ejemplo). */
+int zx_load_empty(void)
+{
+   if (!initialized)
+      return 0;
+   zx_unload();
+   zx_release_all();
+   audio_head = audio_count = 0;
+   frame_w = frame_h = 0;
+   options_dirty = 1;
+   if (!retro_load_game(NULL))
+      return 0;
+   retro_get_system_av_info(&av_info);
+   apply_ports();
+   loaded = 1;
+   return 1;
+}
+
 void zx_unload(void)
 {
    if (loaded)

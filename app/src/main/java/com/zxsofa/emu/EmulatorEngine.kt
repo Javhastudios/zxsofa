@@ -157,6 +157,11 @@ class EmulatorEngine(
         done(NativeCore.nativePokSet(index, active, value))
     }
 
+    /** Guarda lo grabado con SAVE en un fichero .tap. Devuelve false si no hay nada grabado. */
+    fun writeTape(file: File, done: (Boolean) -> Unit) = post {
+        done(NativeCore.nativeTapePresent() && NativeCore.nativeTapeWrite(file.absolutePath))
+    }
+
     fun setJoystickType(type: Int) = post { NativeCore.nativeSetJoystickType(type) }
 
     fun setOption(key: String, value: String) = post { NativeCore.nativeSetOption(key, value) }
@@ -214,7 +219,8 @@ class EmulatorEngine(
             NativeCore.nativeSetJoystickType(cfg.joystickType)
             NativeCore.nativeReleaseAll()
 
-            if (!NativeCore.nativeLoad(cfg.gamePath)) {
+            val loadedOk = if (cfg.gamePath.isEmpty()) NativeCore.nativeLoadEmpty() else NativeCore.nativeLoad(cfg.gamePath)
+            if (!loadedOk) {
                 running = false
                 listener.onError("No se pudo cargar el juego")
                 return

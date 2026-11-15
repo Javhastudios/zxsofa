@@ -167,8 +167,24 @@ compat_fd compat_file_open(const char *path, int write)
 {
    if (write)
    {
-      log_cb(RETRO_LOG_ERROR, "Cannot open \"%s\" for writing\n", path);
-      return COMPAT_FILE_OPEN_FAILED;
+      /* ZX Sofá: escritura habilitada (para guardar en .tap lo grabado con SAVE) */
+      RFILE *wfp = filestream_open(path, RETRO_VFS_FILE_ACCESS_WRITE, RETRO_VFS_FILE_ACCESS_HINT_NONE);
+      compat_fd_internal *wfd;
+      if (!wfp)
+      {
+         log_cb(RETRO_LOG_ERROR, "Cannot open \"%s\" for writing\n", path);
+         return COMPAT_FILE_OPEN_FAILED;
+      }
+      wfd = (compat_fd_internal*)malloc(sizeof(compat_fd_internal));
+      if (!wfd)
+      {
+         filestream_close(wfp);
+         return COMPAT_FILE_OPEN_FAILED;
+      }
+      wfd->ptr = NULL;
+      wfd->length = wfd->remain = 0;
+      wfd->fp = wfp;
+      return (compat_fd)wfd;
    }
 
    compat_fd_internal *fd = (compat_fd_internal*)malloc(sizeof(compat_fd_internal));
@@ -335,10 +351,10 @@ int compat_file_read(compat_fd cfd, utils_file *file)
 
 int compat_file_write(compat_fd cfd, const unsigned char *buffer, size_t length)
 {
-   (void)cfd;
-   (void)buffer;
-   (void)length;
-   return 1;
+   compat_fd_internal *fd = (compat_fd_internal*)cfd;
+   if (!fd || !fd->fp)
+      return 1;
+   return filestream_write(fd->fp, buffer, length) == (int64_t)length ? 0 : 1;
 }
 
 int compat_file_close(compat_fd cfd)

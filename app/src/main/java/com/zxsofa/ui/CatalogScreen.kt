@@ -20,6 +20,14 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Computer
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import com.zxsofa.data.Machine
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material.icons.filled.Add
@@ -58,11 +66,15 @@ fun CatalogScreen(vm: LibraryViewModel, onAddFile: () -> Unit, onOpen: (Game) ->
     val all by vm.games.collectAsState()
     val games = vm.visibleGames(all)
 
+    var showFree by remember { mutableStateOf(false) }
+    if (showFree) FreeSpectrumDialog(vm, onDismiss = { showFree = false })
+
     BoxWithConstraints(Modifier.fillMaxSize()) {
     val wide = maxWidth >= 600.dp
     Column(Modifier.fillMaxSize()) {
         val actions: @Composable () -> Unit = {
             ViewModeButton(vm.viewMode) { vm.changeViewMode(it) }
+            IconButton(onClick = { showFree = true }) { Icon(Icons.Default.Computer, "Encender el Spectrum sin juego") }
             val ctx = LocalContext.current
             IconButton(onClick = { ctx.startActivity(MagazineActivity.intent(ctx)) }) {
                 Icon(Icons.AutoMirrored.Filled.MenuBook, "Revistas")
@@ -207,4 +219,37 @@ private fun EmptyLibrary(onAddFile: () -> Unit, onWifi: () -> Unit) {
             textAlign = TextAlign.Center,
         )
     }
+}
+
+/** Encender el Spectrum sin cargar ningún juego (para programar en BASIC, teclear listados...). */
+@Composable
+private fun FreeSpectrumDialog(vm: LibraryViewModel, onDismiss: () -> Unit) {
+    val ctx = LocalContext.current
+    val machines = listOf(Machine.SPEC48, Machine.SPEC128, Machine.PLUS2, Machine.PLUS3)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Encender el Spectrum") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    "Sin cargar ningún juego: para programar en BASIC o teclear listados de las revistas. " +
+                        "Lo que grabes con SAVE lo puedes guardar en tu colección desde el menú de pausa.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                machines.forEach { m ->
+                    val hasSession = remember(m) { vm.repo.freeStateFile(m, "auto").exists() }
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { onDismiss(); ctx.startActivity(EmulatorActivity.freeIntent(ctx, m, false)) }, modifier = Modifier.weight(1f)) {
+                            Text(m.label)
+                        }
+                        if (hasSession) {
+                            OutlinedButton(onClick = { onDismiss(); ctx.startActivity(EmulatorActivity.freeIntent(ctx, m, true)) }) { Text("Continuar") }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Cerrar") } },
+    )
 }

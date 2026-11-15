@@ -208,3 +208,21 @@ JNIEXPORT jboolean JNICALL FN(nativePokSet)(JNIEnv *env, jobject thiz, jint inde
 {
    return zx_pok_set(index, active == JNI_TRUE, value) ? JNI_TRUE : JNI_FALSE;
 }
+
+JNIEXPORT jboolean JNICALL FN(nativeLoadEmpty)(JNIEnv *env, jobject thiz)
+{
+   return zx_load_empty() ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL FN(nativeTapeWrite)(JNIEnv *env, jobject thiz, jstring path)
+{
+   const char *p = (*env)->GetStringUTFChars(env, path, NULL);
+   int ok = zx_tape_write(p);
+   (*env)->ReleaseStringUTFChars(env, path, p);
+   return ok ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL FN(nativeTapePresent)(JNIEnv *env, jobject thiz)
+{
+   return zx_tape_present() ? JNI_TRUE : JNI_FALSE;
+}

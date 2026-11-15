@@ -148,3 +148,16 @@ int zx_tape_set_block(int block)
       return 0;
    return tape_select_block((size_t)block) == 0;
 }
+
+/* Guarda la cinta actual (incluidos los SAVE hechos desde BASIC) en un fichero .tap/.tzx. */
+int zx_tape_write(const char *path)
+{
+   if (!zx_is_loaded() || !tape_present())
+      return 0;
+   return tape_write(path) == 0;
+}
+
+int zx_tape_present(void)
+{
+   return zx_is_loaded() && tape_present();
+}

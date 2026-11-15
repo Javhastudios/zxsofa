@@ -46,6 +46,7 @@ void zx_set_option(const char *key, const char *value);
 void zx_clear_options(void);
 
 int  zx_load(const char *path);
+int  zx_load_empty(void);
 void zx_unload(void);
 int  zx_is_loaded(void);
 void zx_reset(void);
@@ -89,6 +90,10 @@ int  zx_pok_load(const char *path);
 void zx_pok_clear(void);
 const char *zx_pok_list(void);
 int  zx_pok_set(int index, int active, int value);
+
+/* Guardar la cinta (con lo grabado con SAVE) en un fichero. */
+int  zx_tape_write(const char *path);
+int  zx_tape_present(void);
 
 /* Mensaje pendiente del nucleo (o NULL). Se vacia al leerlo. */
 const char *zx_take_message(void);

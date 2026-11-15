@@ -83,8 +83,13 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
     companion object {
         private const val EXTRA_ID = "gameId"
         private const val EXTRA_RESUME = "resume"
+        private const val EXTRA_FREE = "freeMachine"
         fun intent(ctx: Context, gameId: Long, resume: Boolean) =
             Intent(ctx, EmulatorActivity::class.java).putExtra(EXTRA_ID, gameId).putExtra(EXTRA_RESUME, resume)
+
+        /** Spectrum encendido sin juego (BASIC, programar...). */
+        fun freeIntent(ctx: Context, machine: com.zxsofa.data.Machine, resume: Boolean) =
+            Intent(ctx, EmulatorActivity::class.java).putExtra(EXTRA_FREE, machine.name).putExtra(EXTRA_RESUME, resume)
     }
 
     private val app get() = application as ZXSofaApp
@@ -98,6 +103,9 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
     private var touchHidden by mutableStateOf(false)
     private var joyMode by mutableStateOf(JoyMode.KEMPSTON)
     private var tapeIndex by mutableStateOf(0)
+    /** Modelo cuando se enciende el Spectrum sin juego (null = jugando a un juego). */
+    private var freeMachine by mutableStateOf<com.zxsofa.data.Machine?>(null)
+    private var askProgramName by mutableStateOf(false)
     private var catalog by mutableStateOf<List<TapeEntry>>(emptyList())
     private var showCatalog by mutableStateOf(false)
     private var showDocs by mutableStateOf(false)
@@ -138,7 +146,14 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
 
         val id = intent.getLongExtra(EXTRA_ID, -1)
         val resume = intent.getBooleanExtra(EXTRA_RESUME, false)
-        lifecycleScope.launch {
+        val free = intent.getStringExtra(EXTRA_FREE)?.let { n -> com.zxsofa.data.Machine.entries.firstOrNull { it.name == n } }
+        if (free != null) {
+            freeMachine = free
+            keyboardOpen = packageManager.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN)
+            val state = if (resume) app.repository.freeStateFile(free, "auto").takeIf { it.exists() } else null
+            engine.start(LaunchConfig(gamePath = "", options = CoreOptions.forFree(free, app.settings), joystickType = 1, stateToLoad = state))
+            started = true
+        } else lifecycleScope.launch {
             val g = app.repository.get(id)
             if (g == null) {
                 finish()
@@ -180,7 +195,13 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
     override fun onDestroy() {
         super.onDestroy()
         val g = game
-        val save = if (started && g != null && app.settings.autoSave) app.repository.autoStateFile(g.id) else null
+        val fm = freeMachine
+        val save = when {
+            !started || !app.settings.autoSave -> null
+            fm != null -> app.repository.freeStateFile(fm, "auto")
+            g != null -> app.repository.autoStateFile(g.id)
+            else -> null
+        }
         engine.stop(save)
     }
 
@@ -242,20 +263,52 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
         showDocs = false
         showPokes = false
         askPoke = null
+        askProgramName = false
         engine.setPaused(false)
     }
 
     private fun toast(text: String) = runOnUiThread { Toast.makeText(this, text, Toast.LENGTH_SHORT).show() }
 
     private fun saveSlot() {
+        freeMachine?.let { m ->
+            engine.saveState(app.repository.freeStateFile(m, "slot1")) { ok -> toast(if (ok) "Estado guardado" else "No se pudo guardar") }
+            closeMenu()
+            return
+        }
         val g = game ?: return
         engine.saveState(app.repository.slotStateFile(g.id)) { ok -> toast(if (ok) "Partida guardada" else "No se pudo guardar") }
         closeMenu()
     }
 
     private fun loadSlot() {
+        freeMachine?.let { m ->
+            engine.loadState(app.repository.freeStateFile(m, "slot1")) { ok -> toast(if (ok) "Estado cargado" else "No hay nada guardado") }
+            closeMenu()
+            return
+        }
         val g = game ?: return
         engine.loadState(app.repository.slotStateFile(g.id)) { ok -> toast(if (ok) "Partida cargada" else "No hay partida guardada") }
+        closeMenu()
+    }
+
+    /** Guarda lo grabado con SAVE como un juego nuevo de la colección. */
+    private fun saveProgram(name: String) {
+        val tmp = java.io.File(cacheDir, "grabacion.tap")
+        engine.writeTape(tmp) { ok ->
+            if (!ok) {
+                toast("No hay nada grabado. Escribe SAVE \"nombre\" en BASIC primero.")
+                return@writeTape
+            }
+            lifecycleScope.launch {
+                when (val r = app.repository.addRecordedTape(name, tmp)) {
+                    is com.zxsofa.data.GameRepository.ImportResult.Added -> toast("Guardado en la colección: ${r.game.title}")
+                    is com.zxsofa.data.GameRepository.ImportResult.Duplicate -> toast("Ese programa ya estaba en la colección")
+                    else -> toast("No se pudo guardar")
+                }
+                tmp.delete()
+            }
+        }
+        askProgramName = false
         closeMenu()
     }
 
@@ -514,7 +567,7 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
                         showCatalog -> "Programas de la cinta"
                         showDocs -> "Instrucciones"
                         showPokes -> "POKEs"
-                        else -> g?.title ?: "Pausa"
+                        else -> freeMachine?.label ?: g?.title ?: "Pausa"
                     },
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
@@ -586,9 +639,25 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
                         else showDocs = true
                     }, Modifier.fillMaxWidth()) { Text("Instrucciones") }
                 }
-                FilledTonalButton(onClick = {
-                    if (g?.pokPath != null) { refreshPokes(); showPokes = true } else findPokes()
-                }, Modifier.fillMaxWidth()) { Text(if (g?.pokPath != null) "POKEs (trucos)" else "Buscar POKEs") }
+                if (freeMachine != null) {
+                    if (askProgramName) {
+                        var name by remember { mutableStateOf("") }
+                        Text("Nombre del programa:", Modifier.padding(top = 4.dp))
+                        OutlinedTextField(value = name, onValueChange = { name = it.take(40) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                        Button(onClick = { saveProgram(name) }, Modifier.fillMaxWidth()) { Text("Guardar en la colección") }
+                    } else {
+                        FilledTonalButton(onClick = { askProgramName = true }, Modifier.fillMaxWidth()) { Text("Guardar programa en la colección") }
+                    }
+                    Text(
+                        "Graba con SAVE \"nombre\" en BASIC y luego guárdalo aquí: aparecerá en tu colección como una cinta.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    FilledTonalButton(onClick = {
+                        if (g?.pokPath != null) { refreshPokes(); showPokes = true } else findPokes()
+                    }, Modifier.fillMaxWidth()) { Text(if (g?.pokPath != null) "POKEs (trucos)" else "Buscar POKEs") }
+                }
                 FilledTonalButton(onClick = { startActivity(MagazineActivity.intent(this@EmulatorActivity)) }, Modifier.fillMaxWidth()) {
                     Text("Revistas")
                 }

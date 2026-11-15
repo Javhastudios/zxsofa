@@ -39,7 +39,7 @@ class ScreenshotTest {
             }
             repo.refresh()
         }
-        val shots = listOf("SHELF" to false, "CAROUSEL" to true)
+        val shots = listOf("GRID" to false)
         for ((mode, landscape) in shots) {
             Settings(ctx).catalogView = mode
             inst.uiAutomation.setRotation(if (landscape) android.app.UiAutomation.ROTATION_FREEZE_90 else android.app.UiAutomation.ROTATION_FREEZE_0)
@@ -55,6 +55,19 @@ class ScreenshotTest {
                 b64.chunked(3000).forEachIndexed { i, c -> Log.i("ZXSofaShot", "$tag|$i|$c") }
                 Log.i("ZXSofaShot", "$tag|END")
             }
+        }
+        // Spectrum sin juego, en vertical, con el teclado táctil
+        inst.uiAutomation.setRotation(android.app.UiAutomation.ROTATION_FREEZE_0)
+        Thread.sleep(1000)
+        ActivityScenario.launch<com.zxsofa.ui.EmulatorActivity>(
+            com.zxsofa.ui.EmulatorActivity.freeIntent(ctx, com.zxsofa.data.Machine.SPEC48, false)
+        ).use {
+            Thread.sleep(6000)
+            val bmp = inst.uiAutomation.takeScreenshot()
+            val small = Bitmap.createScaledBitmap(bmp, bmp.width * 2 / 5, bmp.height * 2 / 5, true)
+            val out = ByteArrayOutputStream()
+            small.compress(Bitmap.CompressFormat.JPEG, 75, out)
+            Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP).chunked(3000).forEachIndexed { i, c -> Log.i("ZXSofaShot", "FREEV|$i|$c") }
         }
     }
 }

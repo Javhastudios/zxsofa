@@ -130,7 +130,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun backupText(r: GameRepository.ImportResult.Backup) =
-        "Colección importada: ${r.added} juegos nuevos" + if (r.skipped > 0) " (${r.skipped} ya estaban)" else ""
+        "Colección importada: ${r.added} juegos nuevos, ${r.updated} completados" + if (r.skipped > 0) ", ${r.skipped} sin cambios" else ""
 
     // ------------------------------------------------ copia de seguridad
 

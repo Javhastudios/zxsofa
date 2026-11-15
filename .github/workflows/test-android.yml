@@ -26,5 +26,5 @@ jobs:
           script: |
             chmod +x gradlew
             adb logcat -c
-            ./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.zxsofa.IdentifyTest || true
+            ./gradlew connectedDebugAndroidTest || true
             adb logcat -d -s ZXSofaTest:V AndroidRuntime:E TestRunner:V | tail -80

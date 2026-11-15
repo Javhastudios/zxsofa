@@ -47,7 +47,7 @@ class GameRepository(private val context: Context) {
         /** Era una revista en PDF: se ha añadido a la biblioteca de revistas. */
         data class MagazineAdded(val magazine: Magazine) : ImportResult()
         /** Era una copia de seguridad de ZX Sofá: se han añadido [added] juegos. */
-        data class Backup(val added: Int, val skipped: Int) : ImportResult()
+        data class Backup(val added: Int, val updated: Int, val skipped: Int) : ImportResult()
     }
 
     suspend fun importUri(uri: Uri): ImportResult = withContext(Dispatchers.IO) {
@@ -73,8 +73,8 @@ class GameRepository(private val context: Context) {
             return@withContext importMagazine(name, file)
         }
         if (isBackup(file)) {
-            val (added, skipped) = importBackup(file)
-            return@withContext ImportResult.Backup(added, skipped)
+            val (added, updated, skipped) = importBackup(file)
+            return@withContext ImportResult.Backup(added, updated, skipped)
         }
         if (file.length() > MAX_FILE_SIZE) return@withContext ImportResult.Error("$name es demasiado grande")
         importBytes(name, file.readBytes())
@@ -630,8 +630,9 @@ class GameRepository(private val context: Context) {
     }
 
     /** Añade los juegos de una copia de seguridad que no estén ya (se compara la huella MD5). */
-    suspend fun importBackup(file: File): Pair<Int, Int> = withContext(Dispatchers.IO) {
+    suspend fun importBackup(file: File): Triple<Int, Int, Int> = withContext(Dispatchers.IO) {
         var added = 0
+        var updated = 0
         var skipped = 0
         java.util.zip.ZipFile(file).use { zip ->
             val root = org.json.JSONObject(zip.getInputStream(zip.getEntry(BACKUP_INDEX)).use { String(it.readBytes()) })
@@ -649,7 +650,68 @@ class GameRepository(private val context: Context) {
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
                 val md5 = o.optString("md5")
-                if (md5.isNotBlank() && db.findByMd5(md5) != null) { skipped++; continue }
+                val existing = if (md5.isNotBlank()) db.findByMd5(md5) else null
+                if (existing != null) {
+                    // El juego ya está: completamos lo que le falte, sin pisar lo que ya tiene
+                    var g: Game = existing
+                    val unidentified = g.zxdbId == null && g.year == null && g.publisher == null
+                    if (unidentified) JSONObjectStr(o, "title")?.let { g = g.copy(title = it) }
+                    g = g.copy(
+                        year = g.year ?: JSONObjectStr(o, "year"),
+                        publisher = g.publisher ?: JSONObjectStr(o, "publisher"),
+                        genre = g.genre ?: JSONObjectStr(o, "genre"),
+                        zxdbId = g.zxdbId ?: JSONObjectStr(o, "zxdbId"),
+                        notes = g.notes ?: JSONObjectStr(o, "notes"),
+                        favorite = g.favorite || o.optBoolean("favorite"),
+                        playCount = maxOf(g.playCount, o.optInt("playCount")),
+                        lastPlayed = maxOf(g.lastPlayed, o.optLong("lastPlayed")),
+                    )
+                    if (unidentified) {
+                        g = g.copy(
+                            machine = Machine.fromCore(JSONObjectStr(o, "machine") ?: g.machine.coreValue),
+                            controls = ControlConfig.parse(JSONObjectStr(o, "controls") ?: g.controls.serialize()),
+                        )
+                    }
+                    val stamp = System.currentTimeMillis()
+                    if (g.coverPath == null || !File(g.coverPath!!).exists()) {
+                        File(coversDir, "${g.id}_$stamp.img").takeIf { extract(JSONObjectStr(o, "cover"), it) }?.let { g = g.copy(coverPath = it.absolutePath) }
+                    }
+                    if (g.screenPath == null || !File(g.screenPath!!).exists()) {
+                        File(screensDir, "${g.id}_$stamp.img").takeIf { extract(JSONObjectStr(o, "screen"), it) }?.let { g = g.copy(screenPath = it.absolutePath) }
+                    }
+                    if (g.pokPath == null || !File(g.pokPath!!).exists()) {
+                        File(pokesDir, "${g.id}.pok").takeIf { extract(JSONObjectStr(o, "pok"), it) }?.let { g = g.copy(pokPath = it.absolutePath) }
+                    }
+                    o.optJSONArray("docs")?.let { d ->
+                        for (j in 0 until d.length()) {
+                            val entry = d.getString(j)
+                            val name = safeName(entry.substringAfterLast('/'))
+                            if (g.docs.any { File(it).name == name }) continue
+                            val dest = uniqueFile(docsDir(g.id), name)
+                            if (extract(entry, dest)) g = g.copy(docs = g.docs + dest.absolutePath)
+                        }
+                    }
+                    // Cintas/caras que falten
+                    o.optJSONArray("files")?.let { fs ->
+                        for (j in 1 until fs.length()) {
+                            val entry = fs.getString(j)
+                            val name = safeName(entry.substringAfterLast('/').substringAfter('-'))
+                            if (g.allFiles.any { File(it).name.equals(name, ignoreCase = true) }) continue
+                            val dest = uniqueFile(gamesDir, name)
+                            if (extract(entry, dest)) g = withSortedFiles(g, g.allFiles + dest.absolutePath)
+                        }
+                    }
+                    // Partidas guardadas que no existan aquí (nunca se sobrescriben las tuyas)
+                    o.optJSONArray("states")?.let { st ->
+                        for (j in 0 until st.length()) {
+                            val entry = st.getString(j)
+                            val dest = File(statesDir, "${g.id}_${entry.substringAfterLast('/')}")
+                            if (!dest.exists()) extract(entry, dest)
+                        }
+                    }
+                    if (g != existing) { db.update(g); updated++ } else skipped++
+                    continue
+                }
                 val entries = o.optJSONArray("files") ?: continue
                 val paths = (0 until entries.length()).mapNotNull { j ->
                     val entry = entries.getString(j)
@@ -718,7 +780,7 @@ class GameRepository(private val context: Context) {
             }
         }
         _games.value = db.all()
-        added to skipped
+        Triple(added, updated, skipped)
     }
 
     // --------------------------------------------------------- ayudas

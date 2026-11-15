@@ -49,8 +49,8 @@ fun WifiImportScreen(vm: LibraryViewModel) {
             val result = runBlocking { vm.repo.importFile(name, file) }
             vm.onReceived(result)
             val text = when (result) {
-                is GameRepository.ImportResult.Backup -> "colección recibida: ${result.added} juegos nuevos" +
-                    if (result.skipped > 0) " (${result.skipped} ya estaban)" else ""
+                is GameRepository.ImportResult.Backup -> "colección recibida: ${result.added} juegos nuevos, ${result.updated} completados" +
+                    if (result.skipped > 0) ", ${result.skipped} sin cambios" else ""
                 is GameRepository.ImportResult.MagazineAdded -> "revista añadida ✔ (${result.magazine.pages} páginas)"
                 is GameRepository.ImportResult.PokAttached -> "POKEs añadidos a ${result.game.title} ✔"
                 is GameRepository.ImportResult.Added -> "añadido ✔"

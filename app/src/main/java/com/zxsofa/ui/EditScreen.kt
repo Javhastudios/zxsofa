@@ -83,13 +83,15 @@ fun EditScreen(vm: LibraryViewModel, gameId: Long) {
                         Text(Sides.label(File(path).name, i) + if (i == 0) " (se carga al empezar)" else "")
                         Text(File(path).name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
+                    if (game.allFiles.size > 1) TextButton(onClick = { vm.splitTape(game, path) }) { Text("Separar") }
                     if (i > 0) TextButton(onClick = { vm.removeTape(game, path) }) { Text("Quitar") }
                 }
             }
             OutlinedButton(onClick = { runCatching { pickTapes.launch(arrayOf("*/*")) } }) { Text("Añadir otra cinta o cara") }
             Text(
                 "Si un juego viene en varias caras (Side A, Side B…), añádelas aquí o súbelas con el mismo nombre: " +
-                    "la app las junta sola. Durante la partida, cámbialas desde el menú de pausa.",
+                    "la app las junta sola. Durante la partida, cámbialas desde el menú de pausa. " +
+                    "«Separar» convierte una cinta en un juego aparte; «Quitar» la borra.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

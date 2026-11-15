@@ -170,6 +170,24 @@ class GameRepository(private val context: Context) {
         added
     }
 
+    /** Saca una cinta de un juego y la convierte en un juego aparte (por si se agrupó mal). */
+    suspend fun splitTape(game: Game, path: String): Game? = withContext(Dispatchers.IO) {
+        val g = db.get(game.id) ?: return@withContext null
+        if (path !in g.allFiles || g.allFiles.size < 2) return@withContext null
+        val remaining = withSortedFiles(g, g.allFiles - path)
+        db.update(remaining)
+        val name = File(path).name
+        val newGame = Game(
+            title = guessTitle(name),
+            fileName = name,
+            filePath = path,
+            md5 = md5(File(path).readBytes()),
+        )
+        val id = db.insert(newGame)
+        _games.value = db.all()
+        newGame.copy(id = id)
+    }
+
     /** Quita una cinta extra del juego (no la principal). */
     suspend fun removeTape(game: Game, path: String) = withContext(Dispatchers.IO) {
         val g = db.get(game.id) ?: return@withContext
@@ -454,8 +472,9 @@ class GameRepository(private val context: Context) {
 
     /** Un .pok recibido suelto (Wi-Fi o +): se asigna al juego cuyo título coincide. */
     private fun attachPokByName(name: String, file: File): ImportResult {
-        val key = CoverFinder.normalize(name.substringBeforeLast('.').substringBefore(" ("))
-        val g = db.all().firstOrNull { CoverFinder.normalize(it.title) == key || groupKey(it.fileName) == key }
+        val alnum = { t: String -> t.lowercase().replace(Regex("[^a-z0-9]"), "") }
+        val key = alnum(name.substringBeforeLast('.').substringBefore(" ("))
+        val g = db.all().firstOrNull { alnum(it.title) == key || alnum(guessTitle(it.fileName)) == key }
             ?: return ImportResult.Error("$name: no hay ningún juego con ese título. Añádelo desde la ficha del juego (POKEs).")
         val dest = File(pokesDir, "${g.id}.pok")
         file.copyTo(dest, overwrite = true)
@@ -795,7 +814,13 @@ class GameRepository(private val context: Context) {
 
     private fun safeName(name: String) = name.replace(Regex("[^A-Za-z0-9._()\\- ]"), "_")
 
-    private fun groupKey(fileName: String) = CoverFinder.normalize(Sides.stripMarkers(guessTitle(fileName)))
+    /**
+     * Clave para saber si dos ficheros son caras del mismo juego: el nombre completo sin la
+     * marca de cara. Se conserva lo que va entre paréntesis, porque ahí suele estar lo que
+     * distingue una cinta de otra ("(Issue 36)" frente a "(Issue 37)", el año, la compañía...).
+     */
+    private fun groupKey(fileName: String): String =
+        Sides.stripMarkers(fileName.substringAfterLast('/').substringBeforeLast('.')).lowercase().replace(Regex("[^a-z0-9]"), "")
 
     private fun uniqueFile(dir: File, name: String): File {
         var f = File(dir, name)

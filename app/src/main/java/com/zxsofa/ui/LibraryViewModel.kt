@@ -222,6 +222,14 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
 
     fun removeTape(game: Game, path: String) = viewModelScope.launch { repo.removeTape(game, path) }
 
+    fun splitTape(game: Game, path: String) = viewModelScope.launch {
+        val n = repo.splitTape(game, path)
+        if (n != null) {
+            _messages.tryEmit("«${n.title}» es ahora un juego aparte")
+            identifyAll(listOf(n))
+        }
+    }
+
     private fun identifyAll(list: List<Game>) {
         if (list.isEmpty()) return
         viewModelScope.launch {

@@ -83,4 +83,20 @@ class IdentifyTest {
         assertTrue(after.docs.isNotEmpty())
         repo.delete(after)
     }
+
+    @Test
+    fun carasDeCintasDistintasNoSeMezclan() = runBlocking {
+        val ctx = InstrumentationRegistry.getInstrumentation().targetContext
+        val repo = GameRepository(ctx)
+        fun tap(n: Int) = byteArrayOf(19, 0, 0, 0) + "MICROHOB$n ".take(10).toByteArray() + byteArrayOf(1, 0, 10, 0, 1, 0, 0) +
+            byteArrayOf(3, 0, -1, n.toByte(), (-1 xor n).toByte())
+        val r1 = repo.importBytes("Microhobby seleccion (Issue 36) - Side 1.tzx", tap(1))
+        val r2 = repo.importBytes("Microhobby seleccion (Issue 36) - Side 2.tzx", tap(2))
+        val r3 = repo.importBytes("Microhobby seleccion (Issue 37) - Side 1.tzx", tap(3))
+        Log.i(TAG, "MICROHOBBY r1=${r1::class.simpleName} r2=${r2::class.simpleName} r3=${r3::class.simpleName}")
+        assertTrue("La cara 2 del 36 debe unirse al 36", r2 is GameRepository.ImportResult.AddedSide)
+        assertTrue("El 37 debe ser un juego nuevo", r3 is GameRepository.ImportResult.Added)
+        repo.refresh()
+        repo.games.value.filter { it.fileName.startsWith("Microhobby") }.forEach { repo.delete(it) }
+    }
 }

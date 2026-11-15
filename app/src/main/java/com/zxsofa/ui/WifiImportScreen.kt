@@ -18,6 +18,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -40,8 +43,24 @@ fun WifiImportScreen(vm: LibraryViewModel) {
     var port by remember { mutableStateOf(0) }
     var failed by remember { mutableStateOf(false) }
     val received = remember { mutableStateListOf<String>() }
-    val addresses = remember { UploadServer.localAddresses() }
+    // Se vuelve a mirar cada pocos segundos por si cambia la red (Wi-Fi recién conectada, etc.)
+    val addresses by produceState(UploadServer.localAddresses()) {
+        while (true) { kotlinx.coroutines.delay(3000); value = UploadServer.localAddresses() }
+    }
     val context = LocalContext.current
+    val view = androidx.compose.ui.platform.LocalView.current
+    // Con la pantalla apagada Android puede cortar el Wi-Fi o pausar la app
+    DisposableEffect(view) {
+        view.keepScreenOn = true
+        onDispose { view.keepScreenOn = false }
+    }
+    // Autoprueba: ¿responde el servidor en su propia dirección de red?
+    val selfOk = remember { mutableStateMapOf<String, Boolean>() }
+    LaunchedEffect(port, addresses) {
+        if (port != 0) addresses.forEach { ip ->
+            selfOk[ip] = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { UploadServer.selfTest(ip, port) }
+        }
+    }
 
     DisposableEffect(Unit) {
         val server = UploadServer(context.cacheDir, onFile = { name, file ->
@@ -82,7 +101,11 @@ fun WifiImportScreen(vm: LibraryViewModel) {
         ) {
             when {
                 failed -> Text("No se pudo abrir el servidor.", color = MaterialTheme.colorScheme.error)
-                addresses.isEmpty() -> Text("No hay conexión Wi-Fi o Ethernet.", color = MaterialTheme.colorScheme.error)
+                addresses.isEmpty() -> Text(
+                    "Este aparato no está conectado a ninguna red Wi-Fi o Ethernet. Con datos móviles no funciona: " +
+                        "conéctalo a la misma Wi-Fi que el ordenador.",
+                    color = MaterialTheme.colorScheme.error,
+                )
                 port == 0 -> Text("Arrancando…")
                 else -> {
                     Text("Desde el móvil o el ordenador, conectado a la misma red, abre en el navegador:")
@@ -95,7 +118,19 @@ fun WifiImportScreen(vm: LibraryViewModel) {
                             color = ZxColors.Yellow,
                             modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(ZxColors.SurfaceHigh).padding(16.dp),
                         )
+                        when (selfOk[ip]) {
+                            null -> Text("Comprobando…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            true -> Text("✔ El servidor responde en esta dirección.", color = ZxColors.Green)
+                            false -> Text("✘ El servidor no responde en esta dirección.", color = MaterialTheme.colorScheme.error)
+                        }
                     }
+                    Text(
+                        "Si el navegador se queda cargando aunque aquí ponga ✔, el problema está en la red: " +
+                            "comprueba que el ordenador está en la misma Wi-Fi (no en la de invitados ni con VPN activada), " +
+                            "escribe la dirección completa empezando por http:// y, si sigue sin ir, el router puede tener " +
+                            "activado el «aislamiento de clientes» (AP isolation).",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     Text(
                         "Elige allí los juegos y aparecerán en tu colección. Deja esta pantalla abierta mientras los envías.\n\n" +
                             "Para pasar la colección entera desde otro móvil o tablet con ZX Sofá: allí entra en Ajustes → «Enviar colección a otro dispositivo». " +

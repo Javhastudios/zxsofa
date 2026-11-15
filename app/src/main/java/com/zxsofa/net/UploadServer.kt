@@ -61,6 +61,12 @@ class UploadServer(
                 sock.soTimeout = 30_000
                 val input = BufferedInputStream(sock.getInputStream())
                 val out = sock.getOutputStream()
+                // Chrome a veces prueba primero https:// (TLS). Cerramos al momento para que
+                // vuelva enseguida a http:// en vez de quedarse esperando.
+                input.mark(1)
+                val first = input.read()
+                if (first == -1 || first == 0x16) return
+                input.reset()
                 val requestLine = readLine(input) ?: return
                 val headers = mutableMapOf<String, String>()
                 while (true) {
@@ -152,17 +158,36 @@ class UploadServer(
     companion object {
         const val MAX_UPLOAD = 2L * 1024 * 1024 * 1024
 
-        /** Direcciones IPv4 locales del dispositivo (Wi-Fi / Ethernet). */
+        /** Interfaces de red local: Wi-Fi, Ethernet y punto de acceso; nunca datos móviles. */
+        private val LAN = Regex("^(wlan|eth|ap|swlan|softap|wifi|en|br|mlan|ra)\\d*.*")
+
+        /** Direcciones IPv4 de la red local del dispositivo (Wi-Fi / Ethernet / zona Wi-Fi). */
         fun localAddresses(): List<String> = try {
             NetworkInterface.getNetworkInterfaces().toList()
-                .filter { it.isUp && !it.isLoopback }
+                .filter { it.isUp && !it.isLoopback && LAN.matches(it.name.lowercase()) }
+                .sortedBy { if (it.name.startsWith("wlan")) 0 else 1 }
                 .flatMap { it.inetAddresses.toList() }
                 .filterIsInstance<Inet4Address>()
                 .filter { it.isSiteLocalAddress }
                 .map { it.hostAddress ?: "" }
                 .filter { it.isNotBlank() }
+                .distinct()
         } catch (e: Exception) {
             emptyList()
+        }
+
+        /** Comprueba que el servidor responde en esa dirección (desde el propio aparato). */
+        fun selfTest(ip: String, port: Int): Boolean = try {
+            Socket().use { s ->
+                s.connect(java.net.InetSocketAddress(ip, port), 3000)
+                s.soTimeout = 3000
+                s.getOutputStream().write("GET / HTTP/1.1\r\nHost: $ip\r\nConnection: close\r\n\r\n".toByteArray())
+                s.getOutputStream().flush()
+                val line = BufferedInputStream(s.getInputStream()).bufferedReader().readLine() ?: ""
+                line.contains(" 200 ")
+            }
+        } catch (e: Exception) {
+            false
         }
 
         private val PAGE = """

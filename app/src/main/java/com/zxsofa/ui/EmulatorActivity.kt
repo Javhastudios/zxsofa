@@ -143,7 +143,7 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
                 when {
                     menuOpen && askPoke != null -> askPoke = null
                     menuOpen && pickedGame != null -> pickedGame = null
-                    menuOpen && (showCatalog || showDocs || showPokes || showLoadList) -> { showCatalog = false; showDocs = false; showPokes = false; showLoadList = false }
+                    menuOpen && (showCatalog || showDocs || showPokes || showLoadList || showKeys) -> { showCatalog = false; showDocs = false; showPokes = false; showLoadList = false; showKeys = false }
                     menuOpen -> closeMenu()
                     keyboardOpen -> keyboardOpen = false
                     else -> openMenu()
@@ -273,6 +273,7 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
         askProgramName = false
         showLoadList = false
         pickedGame = null
+        showKeys = false
         engine.setPaused(false)
     }
 
@@ -303,7 +304,11 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
     /** Modo ordenador: mete la cinta de un juego de la colección. */
     private fun insertGame(g: Game, autoload: Boolean) {
         engine.insert(g.filePath, autoload) { ok ->
-            if (ok) runOnUiThread { insertedGame = g; insertedTape = 0 }
+            if (ok) runOnUiThread {
+                insertedGame = g
+                insertedTape = 0
+                applyControls(g.controls)
+            }
             toast(
                 when {
                     !ok -> "No se pudo meter la cinta"
@@ -371,16 +376,30 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
         closeMenu()
     }
 
-    private fun cycleJoystick() {
-        val g = game ?: return
-        val next = JoyMode.entries[(joyMode.ordinal + 1) % JoyMode.entries.size]
-        joyMode = next
-        val controls = g.controls.copy(mode = next)
-        engine.setJoystickType(next.coreJoystick)
+    /** Controles en uso: los del juego abierto, los del juego metido en el modo ordenador o los sueltos. */
+    private var freeControls by mutableStateOf(com.zxsofa.data.ControlConfig())
+    private var showKeys by mutableStateOf(false)
+
+    private fun currentControls(): com.zxsofa.data.ControlConfig =
+        game?.controls ?: insertedGame?.controls ?: freeControls
+
+    /** Aplica unos controles al núcleo y los recuerda (en el juego, si hay uno). */
+    private fun applyControls(controls: com.zxsofa.data.ControlConfig) {
+        joyMode = controls.mode
+        engine.setJoystickType(controls.mode.coreJoystick)
         CoreOptions.joypadMapping(controls).forEach { (k, v) -> engine.setOption(k, v) }
-        val updated = g.copy(controls = controls)
-        game = updated
-        lifecycleScope.launch { app.repository.update(updated) } // se recuerda para la próxima vez
+        val g = game
+        val ins = insertedGame
+        when {
+            g != null -> { val u = g.copy(controls = controls); game = u; lifecycleScope.launch { app.repository.update(u) } }
+            ins != null -> { val u = ins.copy(controls = controls); insertedGame = u; lifecycleScope.launch { app.repository.update(u) } }
+            else -> freeControls = controls
+        }
+    }
+
+    private fun cycleJoystick() {
+        val next = JoyMode.entries[(joyMode.ordinal + 1) % JoyMode.entries.size]
+        applyControls(currentControls().copy(mode = next))
     }
 
     // ------------------------------------------------------ entrada física
@@ -477,8 +496,9 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
         val opacity = settings.controlsOpacity
         val haptics = settings.vibration
         val g = game
-        val extra1 = g?.controls?.extra1?.let { if (it == "<none>") "ENTER" else ZxKeyboard.coreKeyLabel(it) } ?: "ENTER"
-        val extra2 = g?.controls?.extra2?.let { if (it == "<none>") "ESPACIO" else ZxKeyboard.coreKeyLabel(it) } ?: "ESPACIO"
+        val ctl = currentControls()
+        val extra1 = if (ctl.extra1 == "<none>") "ENTER" else ZxKeyboard.coreKeyLabel(ctl.extra1)
+        val extra2 = if (ctl.extra2 == "<none>") "ESPACIO" else ZxKeyboard.coreKeyLabel(ctl.extra2)
 
         BoxWithConstraints(
             Modifier
@@ -588,7 +608,7 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
     @Composable
     private fun PauseMenu(hasTouch: Boolean) {
         val first = remember { FocusRequester() }
-        LaunchedEffect(showCatalog, showDocs, showPokes, showLoadList, pickedGame) { runCatching { first.requestFocus() } }
+        LaunchedEffect(showCatalog, showDocs, showPokes, showLoadList, pickedGame, showKeys) { runCatching { first.requestFocus() } }
         val g = game
         Box(Modifier.fillMaxSize().background(Color(0xCC000000)), contentAlignment = Alignment.Center) {
             Column(
@@ -606,6 +626,7 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
                         showDocs -> "Instrucciones"
                         showPokes -> "POKEs"
                         showLoadList -> "Cargar juego"
+                        showKeys -> "Teclas del joystick"
                         else -> freeMachine?.label ?: g?.title ?: "Pausa"
                     },
                     style = MaterialTheme.typography.titleLarge,
@@ -624,6 +645,25 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
                             startActivity(MagazineActivity.docIntent(this@EmulatorActivity, path, java.io.File(path).name))
                         }, Modifier.fillMaxWidth()) { Text(java.io.File(path).name, maxLines = 1) }
                     }
+                    return@Column
+                }
+                if (showKeys) {
+                    Button(onClick = { showKeys = false }, Modifier.fillMaxWidth().focusRequester(first)) { Text("Listo") }
+                    val c = currentControls()
+                    val names = ZxKeyboard.coreKeyNames
+                    val lbl = { k: String -> ZxKeyboard.coreKeyLabel(k) }
+                    SelectorRow("Arriba", c.up, names, lbl, { applyControls(currentControls().copy(up = it)) })
+                    SelectorRow("Abajo", c.down, names, lbl, { applyControls(currentControls().copy(down = it)) })
+                    SelectorRow("Izquierda", c.left, names, lbl, { applyControls(currentControls().copy(left = it)) })
+                    SelectorRow("Derecha", c.right, names, lbl, { applyControls(currentControls().copy(right = it)) })
+                    SelectorRow("Disparo", c.fire, names, lbl, { applyControls(currentControls().copy(fire = it)) })
+                    SelectorRow("Botón extra 1", c.extra1, names, { if (it == "<none>") "ENTER" else lbl(it) }, { applyControls(currentControls().copy(extra1 = it)) })
+                    SelectorRow("Botón extra 2", c.extra2, names, { if (it == "<none>") "ESPACIO" else lbl(it) }, { applyControls(currentControls().copy(extra2 = it)) })
+                    Text(
+                        "Se aplican al momento" + (if (game != null || insertedGame != null) " y se guardan para este juego." else "."),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     return@Column
                 }
                 if (showLoadList) {
@@ -742,6 +782,9 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
                     if (hasTouch && !usingGamepad) keyboardOpen = true else engine.pulse(Pad.SELECT)
                 }, Modifier.fillMaxWidth()) { Text("Teclado del Spectrum") }
                 FilledTonalButton(onClick = { cycleJoystick() }, Modifier.fillMaxWidth()) { Text("Joystick: ${joyMode.label}") }
+                if (joyMode == JoyMode.KEYS) {
+                    FilledTonalButton(onClick = { showKeys = true }, Modifier.fillMaxWidth()) { Text("Elegir las teclas") }
+                }
                 if (hasTouch) {
                     FilledTonalButton(onClick = { touchHidden = !touchHidden }, Modifier.fillMaxWidth()) {
                         Text(if (touchHidden) "Mostrar controles táctiles" else "Ocultar controles táctiles")

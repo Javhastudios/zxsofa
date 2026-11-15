@@ -96,4 +96,27 @@ class KeyboardTest {
             shot("LOADV")
         }
     }
+
+    @Test
+    fun joystickEnModoOrdenador() {
+        inst.uiAutomation.setRotation(android.app.UiAutomation.ROTATION_FREEZE_0)
+        val ctx = inst.targetContext
+        ActivityScenario.launch<EmulatorActivity>(EmulatorActivity.freeIntent(ctx, Machine.SPEC48, false)).use {
+            Thread.sleep(4000)
+            compose.onAllNodesWithContentDescription("Menú")[0].performClick()
+            compose.waitForIdle()
+            val modos = mutableListOf<String>()
+            repeat(4) {
+                compose.onAllNodesWithText("Joystick:", substring = true)[0].performClick()
+                compose.waitForIdle()
+                modos += compose.onAllNodesWithText("Joystick:", substring = true)[0].fetchSemanticsNode()
+                    .config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text)?.joinToString() ?: "?"
+            }
+            Log.i("ZXSofaTest", "MODOS $modos")
+            compose.onAllNodesWithText("Elegir las teclas")[0].performClick()
+            compose.waitForIdle()
+            Thread.sleep(500)
+            shot("JOYV")
+        }
+    }
 }

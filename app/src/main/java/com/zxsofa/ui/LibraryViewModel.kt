@@ -102,6 +102,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
                     is GameRepository.ImportResult.Duplicate -> _messages.tryEmit("Ya estaba en la colección: ${r.game.title}")
                     is GameRepository.ImportResult.AddedSide -> _messages.tryEmit("Nueva cinta añadida a ${r.game.title} (${r.game.allFiles.size} en total)")
                     is GameRepository.ImportResult.Backup -> _messages.tryEmit(backupText(r))
+                    is GameRepository.ImportResult.MagazineAdded -> _messages.tryEmit("Revista añadida: ${r.magazine.title}")
                     is GameRepository.ImportResult.Error -> _messages.tryEmit(r.message)
                 }
             }
@@ -121,6 +122,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
             is GameRepository.ImportResult.Duplicate -> _messages.tryEmit("Ya estaba en la colección: ${result.game.title}")
             is GameRepository.ImportResult.AddedSide -> _messages.tryEmit("Nueva cinta añadida a ${result.game.title}")
             is GameRepository.ImportResult.Backup -> _messages.tryEmit(backupText(result))
+            is GameRepository.ImportResult.MagazineAdded -> _messages.tryEmit("Revista recibida: ${result.magazine.title}")
             is GameRepository.ImportResult.Error -> _messages.tryEmit(result.message)
         }
     }

@@ -19,6 +19,8 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Search
@@ -58,6 +60,10 @@ fun CatalogScreen(vm: LibraryViewModel, onAddFile: () -> Unit, onOpen: (Game) ->
     Column(Modifier.fillMaxSize()) {
         AppHeader("ZX Sofá") {
             ViewModeButton(vm.viewMode) { vm.changeViewMode(it) }
+            val ctx = LocalContext.current
+            IconButton(onClick = { ctx.startActivity(MagazineActivity.intent(ctx)) }) {
+                Icon(Icons.AutoMirrored.Filled.MenuBook, "Revistas")
+            }
             IconButton(onClick = onAddFile) { Icon(Icons.Default.Add, "Añadir juegos desde archivo") }
             IconButton(onClick = { vm.navigate(Screen.WifiImport) }) { Icon(Icons.Default.Wifi, "Añadir desde otro dispositivo") }
             IconButton(onClick = { vm.navigate(Screen.Settings) }) { Icon(Icons.Default.Settings, "Ajustes") }

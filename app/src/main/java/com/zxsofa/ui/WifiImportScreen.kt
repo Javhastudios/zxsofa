@@ -51,6 +51,7 @@ fun WifiImportScreen(vm: LibraryViewModel) {
             val text = when (result) {
                 is GameRepository.ImportResult.Backup -> "colección recibida: ${result.added} juegos nuevos" +
                     if (result.skipped > 0) " (${result.skipped} ya estaban)" else ""
+                is GameRepository.ImportResult.MagazineAdded -> "revista añadida ✔ (${result.magazine.pages} páginas)"
                 is GameRepository.ImportResult.Added -> "añadido ✔"
                 is GameRepository.ImportResult.Duplicate -> "ya estaba en la colección"
                 is GameRepository.ImportResult.AddedSide -> "añadido como otra cara de ${result.game.title} ✔"

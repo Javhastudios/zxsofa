@@ -178,7 +178,7 @@ class UploadServer(
 </style></head><body>
 <h1>ZX Sofá</h1>
 <div class="stripes"><i style="background:#d80000"></i><i style="background:#f2d000"></i><i style="background:#00c000"></i><i style="background:#00c8e8"></i></div>
-<p>Elige o arrastra juegos de Spectrum (.tap, .tzx, .z80, .sna, .dsk, .zip…). Aparecerán en la tele al momento.</p>
+<p>Elige o arrastra juegos de Spectrum (.tap, .tzx, .z80, .sna, .dsk, .zip…) o revistas en PDF. Aparecerán en la tele al momento.</p>
 <label class="drop" id="drop"><input type="file" id="files" multiple hidden><p>Toca aquí para elegir archivos<br>o arrástralos encima</p><button type="button" onclick="document.getElementById('files').click()">Elegir juegos</button></label>
 <ul id="log"></ul>
 <p style="margin-top:32px"><a style="color:#f2d000" href="/backup.zip">⬇ Descargar copia de seguridad de esta colección</a><br>

@@ -40,5 +40,9 @@
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode"
             android:screenOrientation="fullUser"
             android:theme="@style/Theme.ZXSofa.Fullscreen" />
+        <activity
+            android:name=".ui.MagazineActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation" />
     </application>
 </manifest>

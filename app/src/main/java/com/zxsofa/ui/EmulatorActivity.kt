@@ -496,6 +496,9 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
                     }
                     Spacer(Modifier.height(4.dp))
                 }
+                FilledTonalButton(onClick = { startActivity(MagazineActivity.intent(this@EmulatorActivity)) }, Modifier.fillMaxWidth()) {
+                    Text("Revistas")
+                }
                 FilledTonalButton(onClick = { saveSlot() }, Modifier.fillMaxWidth()) { Text("Guardar partida") }
                 FilledTonalButton(onClick = { loadSlot() }, Modifier.fillMaxWidth()) { Text("Cargar partida") }
                 FilledTonalButton(onClick = {

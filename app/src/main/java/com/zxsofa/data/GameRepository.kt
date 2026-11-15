@@ -40,6 +40,8 @@ class GameRepository(private val context: Context) {
         /** Era otra cara/cinta de un juego que ya estaba: se ha unido a él. */
         data class AddedSide(val game: Game) : ImportResult()
         data class Error(val message: String) : ImportResult()
+        /** Era una revista en PDF: se ha añadido a la biblioteca de revistas. */
+        data class MagazineAdded(val magazine: Magazine) : ImportResult()
         /** Era una copia de seguridad de ZX Sofá: se han añadido [added] juegos. */
         data class Backup(val added: Int, val skipped: Int) : ImportResult()
     }
@@ -60,6 +62,9 @@ class GameRepository(private val context: Context) {
 
     /** Importa un fichero ya guardado en disco: un juego o una copia de seguridad completa. */
     suspend fun importFile(name: String, file: File): ImportResult = withContext(Dispatchers.IO) {
+        if (name.lowercase().endsWith(".pdf") || isPdf(file)) {
+            return@withContext importMagazine(name, file)
+        }
         if (isBackup(file)) {
             val (added, skipped) = importBackup(file)
             return@withContext ImportResult.Backup(added, skipped)
@@ -313,6 +318,77 @@ class GameRepository(private val context: Context) {
     fun autoStateFile(gameId: Long) = File(statesDir, "${gameId}_auto.state")
     fun slotStateFile(gameId: Long, slot: Int = 1) = File(statesDir, "${gameId}_slot$slot.state")
 
+
+    // ------------------------------------------------------------ revistas
+
+    private val magazinesDir = File(context.filesDir, "magazines").apply { mkdirs() }
+    private val _magazines = MutableStateFlow<List<Magazine>>(emptyList())
+    val magazines: StateFlow<List<Magazine>> = _magazines
+
+    suspend fun refreshMagazines() = withContext(Dispatchers.IO) { _magazines.value = db.magazines() }
+
+    suspend fun magazine(id: Long): Magazine? = withContext(Dispatchers.IO) { db.magazine(id) }
+
+    private fun isPdf(file: File): Boolean = try {
+        file.inputStream().use { val b = ByteArray(5); it.read(b) == 5 && String(b) == "%PDF-" }
+    } catch (e: Exception) {
+        false
+    }
+
+    private suspend fun importMagazine(name: String, file: File): ImportResult = withContext(Dispatchers.IO) {
+        val base = name.substringAfterLast('/').substringAfterLast('\\')
+        val dest = uniqueFile(magazinesDir, safeName(base.ifBlank { "revista.pdf" }).let { if (it.lowercase().endsWith(".pdf")) it else "$it.pdf" })
+        file.inputStream().use { input -> dest.outputStream().use { input.copyTo(it) } }
+
+        // Comprobamos que Android puede abrirla, contamos páginas y hacemos la miniatura de la portada
+        var pages = 0
+        var thumb: File? = null
+        try {
+            android.os.ParcelFileDescriptor.open(dest, android.os.ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
+                android.graphics.pdf.PdfRenderer(pfd).use { r ->
+                    pages = r.pageCount
+                    if (pages > 0) {
+                        r.openPage(0).use { page ->
+                            val w = 360
+                            val h = (w * page.height.toFloat() / page.width).toInt().coerceIn(1, 1200)
+                            val bmp = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+                            bmp.eraseColor(android.graphics.Color.WHITE)
+                            page.render(bmp, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                            val t = File(magazinesDir, "${dest.nameWithoutExtension}_portada.jpg")
+                            t.outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, it) }
+                            bmp.recycle()
+                            thumb = t
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            dest.delete()
+            return@withContext ImportResult.Error("$base: no se puede abrir el PDF (¿protegido con contraseña o dañado?)")
+        }
+        val title = base.substringBeforeLast('.').replace('_', ' ').replace(Regex("\\s+"), " ").trim().ifBlank { "Revista" }
+        val m = Magazine(title = title, path = dest.absolutePath, thumbPath = thumb?.absolutePath, pages = pages)
+        val id = db.insertMagazine(m)
+        _magazines.value = db.magazines()
+        ImportResult.MagazineAdded(m.copy(id = id))
+    }
+
+    suspend fun updateMagazine(m: Magazine) = withContext(Dispatchers.IO) {
+        db.updateMagazine(m)
+        _magazines.value = db.magazines()
+    }
+
+    /** Guarda la página por la que vas (sin refrescar la lista en cada página). */
+    suspend fun setMagazinePage(id: Long, page: Int) = withContext(Dispatchers.IO) {
+        db.magazine(id)?.let { db.updateMagazine(it.copy(lastPage = page)) }
+    }
+
+    suspend fun deleteMagazine(m: Magazine) = withContext(Dispatchers.IO) {
+        File(m.path).delete()
+        m.thumbPath?.let { File(it).delete() }
+        db.deleteMagazine(m.id)
+        _magazines.value = db.magazines()
+    }
 
     // ------------------------------------------------- copia de seguridad
 

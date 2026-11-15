@@ -95,6 +95,10 @@ data class Game(
     val lastPlayed: Long = 0,
     val playCount: Int = 0,
     val notes: String? = null,
+    /** Instrucciones, mapas... (rutas absolutas de PDF, TXT o imágenes). */
+    val docs: List<String> = emptyList(),
+    /** Fichero .pok con los POKEs (trucos) del juego. */
+    val pokPath: String? = null,
 ) {
     val subtitle: String
         get() = listOfNotNull(year, publisher).joinToString(" · ")

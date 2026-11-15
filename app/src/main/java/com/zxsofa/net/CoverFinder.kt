@@ -23,6 +23,8 @@ data class ZxdbEntry(
     val inlays: List<String>,
     /** Pantalla de carga (o la primera captura disponible). */
     val screen: String?,
+    /** Instrucciones (TXT, PDF o imágenes). */
+    val instructions: List<String> = emptyList(),
 )
 
 /** Una portada candidata para mostrar en el buscador. */
@@ -103,6 +105,17 @@ class CoverFinder(private val context: Context) {
             inlays += priority to path
         }
 
+        // Instrucciones y mapas en formatos que sabemos mostrar
+        val docs = mutableListOf<String>()
+        src.optJSONArray("additionalDownloads")?.forEachObject { d ->
+            val type = d.optString("type").lowercase()
+            val path = d.optString("path")
+            val ext = path.substringAfterLast('.', "").lowercase()
+            if (path.isNotBlank() && (type.contains("instruction") || type.contains("manual") || type.contains("map")) &&
+                ext in listOf("txt", "pdf", "jpg", "jpeg", "png", "gif", "htm", "html")
+            ) docs += path
+        }
+
         // Pantallas: preferimos la de carga
         var screen: String? = null
         var loading: String? = null
@@ -124,6 +137,7 @@ class CoverFinder(private val context: Context) {
             machineType = src.optString("machineType").takeIf { it.isNotBlank() && it != "null" },
             inlays = inlays.sortedBy { it.first }.map { it.second }.distinct(),
             screen = loading ?: screen,
+            instructions = docs.distinct(),
         )
     }
 
@@ -199,6 +213,59 @@ class CoverFinder(private val context: Context) {
         val inter = tokens.intersect(targetTokens).size
         val union = tokens.union(targetTokens).size
         return if (union == 0) 0 else (inter * 75) / union
+    }
+
+    // ---------------------------------------------------- POKEs (Tipshop)
+
+    private val pokNames: List<String> by lazy {
+        try {
+            context.assets.open("tipshop_pokes.txt").bufferedReader().readLines().filter { it.isNotBlank() }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    /** Ficheros .pok de The Tipshop cuyo título se parece; el más probable primero. */
+    fun pokCandidates(title: String, year: String? = null, max: Int = 8): List<String> {
+        val target = normalize(title)
+        if (target.isBlank()) return emptyList()
+        val tokens = target.split(" ").toSet()
+        return pokNames.asSequence()
+            .map { path ->
+                val name = path.substringAfterLast('/').removeSuffix(".pok")
+                var sc = score(target, tokens, normalize(name.substringBefore(" (")))
+                if (year != null && name.contains("($year)")) sc += 5
+                path to sc
+            }
+            .filter { it.second >= 45 }
+            .sortedByDescending { it.second }
+            .take(max)
+            .map { it.first }
+            .toList()
+    }
+
+    fun pokUrl(path: String): String =
+        "https://raw.githubusercontent.com/ladyeklipse/all-tipshop-pokes/master/" +
+            path.split("/").joinToString("/") { URLEncoder.encode(it, "UTF-8").replace("+", "%20") }
+
+    fun pokScore(title: String, path: String): Int {
+        val target = normalize(title)
+        return score(target, target.split(" ").toSet(), normalize(path.substringAfterLast('/').removeSuffix(".pok").substringBefore(" (")))
+    }
+
+    /** Descarga un fichero cualquiera (instrucciones, .pok...). */
+    suspend fun downloadAny(urls: List<String>, dest: File): Boolean = withContext(Dispatchers.IO) {
+        for (url in urls) {
+            try {
+                val bytes = getBytes(url) ?: continue
+                if (bytes.isEmpty()) continue
+                dest.parentFile?.mkdirs()
+                dest.writeBytes(bytes)
+                return@withContext true
+            } catch (e: Exception) {
+            }
+        }
+        false
     }
 
     // ------------------------------------------------------- utilidades

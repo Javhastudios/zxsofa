@@ -22,7 +22,7 @@ target_compile_options(fusecore PRIVATE -O2 -fPIC -fno-strict-aliasing -w)
 target_link_libraries(fusecore PUBLIC m)
 
 # Mini frontend libretro (independiente de Android, se puede probar en Linux)
-add_library(zxcore STATIC zxcore.c zxtape.c)
+add_library(zxcore STATIC zxcore.c zxtape.c zxpoke.c)
 target_include_directories(zxcore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${FUSE_DIR}/deps/libretro-common/include)
 target_compile_options(zxcore PRIVATE -O2 -fPIC -Wall)
 target_compile_definitions(zxcore PRIVATE NDEBUG)

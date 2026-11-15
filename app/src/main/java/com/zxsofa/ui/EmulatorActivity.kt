@@ -40,6 +40,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -70,6 +71,8 @@ import com.zxsofa.emu.CoreOptions
 import com.zxsofa.emu.EmulatorEngine
 import com.zxsofa.emu.LaunchConfig
 import com.zxsofa.emu.Pad
+import com.zxsofa.emu.PokEntry
+import com.zxsofa.emu.NativeCore
 import com.zxsofa.emu.TapeEntry
 import com.zxsofa.emu.ZxKeyboard
 import kotlinx.coroutines.launch
@@ -97,6 +100,10 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
     private var tapeIndex by mutableStateOf(0)
     private var catalog by mutableStateOf<List<TapeEntry>>(emptyList())
     private var showCatalog by mutableStateOf(false)
+    private var showDocs by mutableStateOf(false)
+    private var showPokes by mutableStateOf(false)
+    private var pokes by mutableStateOf<List<PokEntry>>(emptyList())
+    private var askPoke by mutableStateOf<PokEntry?>(null)
     private var started = false
 
     // Entrada física
@@ -120,7 +127,8 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 when {
-                    menuOpen && showCatalog -> showCatalog = false
+                    menuOpen && askPoke != null -> askPoke = null
+                    menuOpen && (showCatalog || showDocs || showPokes) -> { showCatalog = false; showDocs = false; showPokes = false }
                     menuOpen -> closeMenu()
                     keyboardOpen -> keyboardOpen = false
                     else -> openMenu()
@@ -178,7 +186,34 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
 
     // ------------------------------------------------------------ Listener
 
-    override fun onStarted() {}
+    override fun onStarted() {
+        // Hilo del emulador, con el juego ya cargado: preparamos sus POKEs
+        game?.pokPath?.let { if (java.io.File(it).exists()) NativeCore.nativePokLoad(it) }
+    }
+
+    private fun refreshPokes() = engine.pokList { list -> runOnUiThread { pokes = list } }
+
+    private fun togglePoke(p: PokEntry, value: Int = 0) {
+        engine.pokSet(p.index, !p.active, value) { ok ->
+            if (!ok) toast("Ese POKE no se puede aplicar")
+            refreshPokes()
+        }
+    }
+
+    private fun findPokes() {
+        val g = game ?: return
+        toast("Buscando POKEs…")
+        lifecycleScope.launch {
+            val updated = try { app.repository.autoPokes(g) } catch (e: Exception) { null }
+            if (updated?.pokPath != null) {
+                game = updated
+                engine.pokLoad(updated.pokPath) { n -> toast("$n trucos encontrados"); refreshPokes() }
+                showPokes = true
+            } else {
+                toast("No he encontrado POKEs para este juego (prueba desde la ficha: «Buscar POKEs»)")
+            }
+        }
+    }
 
     override fun onMessage(message: String) = runOnUiThread {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
@@ -204,6 +239,9 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
     private fun closeMenu() {
         menuOpen = false
         showCatalog = false
+        showDocs = false
+        showPokes = false
+        askPoke = null
         engine.setPaused(false)
     }
 
@@ -459,7 +497,7 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
     @Composable
     private fun PauseMenu(hasTouch: Boolean) {
         val first = remember { FocusRequester() }
-        LaunchedEffect(showCatalog) { runCatching { first.requestFocus() } }
+        LaunchedEffect(showCatalog, showDocs, showPokes) { runCatching { first.requestFocus() } }
         val g = game
         Box(Modifier.fillMaxSize().background(Color(0xCC000000)), contentAlignment = Alignment.Center) {
             Column(
@@ -471,11 +509,57 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
                     .padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text(if (showCatalog) "Programas de la cinta" else g?.title ?: "Pausa", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(
+                    when {
+                        showCatalog -> "Programas de la cinta"
+                        showDocs -> "Instrucciones"
+                        showPokes -> "POKEs"
+                        else -> g?.title ?: "Pausa"
+                    },
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                )
                 RainbowStripes(stripe = 4.dp)
                 Spacer(Modifier.height(4.dp))
                 if (showCatalog) {
                     TapeCatalogList(first)
+                    return@Column
+                }
+                if (showDocs && g != null) {
+                    Button(onClick = { showDocs = false }, Modifier.fillMaxWidth().focusRequester(first)) { Text("Volver") }
+                    g.docs.forEach { path ->
+                        FilledTonalButton(onClick = {
+                            startActivity(MagazineActivity.docIntent(this@EmulatorActivity, path, java.io.File(path).name))
+                        }, Modifier.fillMaxWidth()) { Text(java.io.File(path).name, maxLines = 1) }
+                    }
+                    return@Column
+                }
+                if (showPokes) {
+                    Button(onClick = { showPokes = false }, Modifier.fillMaxWidth().focusRequester(first)) { Text("Volver") }
+                    Text("Pulsa un truco para activarlo o desactivarlo.", style = MaterialTheme.typography.bodySmall)
+                    pokes.forEach { p ->
+                        FilledTonalButton(
+                            onClick = { if (!p.active && p.askValue) askPoke = p else togglePoke(p) },
+                            enabled = !p.broken,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text((if (p.active) "✅ " else "⬜ ") + p.name, maxLines = 2, modifier = Modifier.weight(1f))
+                        }
+                    }
+                    askPoke?.let { p ->
+                        var value by remember(p.index) { mutableStateOf("") }
+                        Text("«${p.name}» necesita un número (0-255), por ejemplo vidas:", Modifier.padding(top = 8.dp))
+                        OutlinedTextField(
+                            value = value,
+                            onValueChange = { v -> value = v.filter { it.isDigit() }.take(3) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Button(onClick = {
+                            togglePoke(p, (value.toIntOrNull() ?: 0).coerceIn(0, 255))
+                            askPoke = null
+                        }, Modifier.fillMaxWidth()) { Text("Aplicar") }
+                    }
                     return@Column
                 }
                 Button(onClick = { closeMenu() }, Modifier.fillMaxWidth().focusRequester(first)) { Text("Continuar") }
@@ -496,6 +580,15 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
                     }
                     Spacer(Modifier.height(4.dp))
                 }
+                if (g != null && g.docs.isNotEmpty()) {
+                    FilledTonalButton(onClick = {
+                        if (g.docs.size == 1) startActivity(MagazineActivity.docIntent(this@EmulatorActivity, g.docs[0], java.io.File(g.docs[0]).name))
+                        else showDocs = true
+                    }, Modifier.fillMaxWidth()) { Text("Instrucciones") }
+                }
+                FilledTonalButton(onClick = {
+                    if (g?.pokPath != null) { refreshPokes(); showPokes = true } else findPokes()
+                }, Modifier.fillMaxWidth()) { Text(if (g?.pokPath != null) "POKEs (trucos)" else "Buscar POKEs") }
                 FilledTonalButton(onClick = { startActivity(MagazineActivity.intent(this@EmulatorActivity)) }, Modifier.fillMaxWidth()) {
                     Text("Revistas")
                 }

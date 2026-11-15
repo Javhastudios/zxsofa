@@ -103,6 +103,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
                     is GameRepository.ImportResult.AddedSide -> _messages.tryEmit("Nueva cinta añadida a ${r.game.title} (${r.game.allFiles.size} en total)")
                     is GameRepository.ImportResult.Backup -> _messages.tryEmit(backupText(r))
                     is GameRepository.ImportResult.MagazineAdded -> _messages.tryEmit("Revista añadida: ${r.magazine.title}")
+                    is GameRepository.ImportResult.PokAttached -> _messages.tryEmit("POKEs añadidos a ${r.game.title}")
                     is GameRepository.ImportResult.Error -> _messages.tryEmit(r.message)
                 }
             }
@@ -123,6 +124,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
             is GameRepository.ImportResult.AddedSide -> _messages.tryEmit("Nueva cinta añadida a ${result.game.title}")
             is GameRepository.ImportResult.Backup -> _messages.tryEmit(backupText(result))
             is GameRepository.ImportResult.MagazineAdded -> _messages.tryEmit("Revista recibida: ${result.magazine.title}")
+            is GameRepository.ImportResult.PokAttached -> _messages.tryEmit("POKEs añadidos a ${result.game.title}")
             is GameRepository.ImportResult.Error -> _messages.tryEmit(result.message)
         }
     }
@@ -166,6 +168,47 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
     }
+
+    // ------------------------------------------------ instrucciones y POKEs
+
+    fun addDocs(game: Game, uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        viewModelScope.launch { _messages.tryEmit("Añadidos ${repo.addDocs(game, uris)} documentos") }
+    }
+
+    fun removeDoc(game: Game, path: String) = viewModelScope.launch { repo.removeDoc(game, path) }
+
+    fun fetchInstructions(game: Game) = viewModelScope.launch {
+        busy = true
+        try {
+            val n = repo.fetchInstructions(game)
+            _messages.tryEmit(
+                when {
+                    n < 0 -> "No se pudo identificar el juego en ZXDB"
+                    n == 0 -> "ZXDB no tiene instrucciones nuevas para este juego"
+                    else -> "Descargadas $n instrucciones"
+                }
+            )
+        } catch (e: Exception) {
+            _messages.tryEmit("Sin conexión con ZXDB")
+        } finally {
+            busy = false
+        }
+    }
+
+    fun setPokFromTipshop(game: Game, path: String) = viewModelScope.launch {
+        busy = true
+        val g = try { repo.setPokFromTipshop(game, path) } catch (e: Exception) { null }
+        busy = false
+        _messages.tryEmit(if (g != null) "POKEs listos: ${repo.pokCount(g.pokPath)} trucos" else "No se pudo descargar el .pok")
+    }
+
+    fun setPokFromUri(game: Game, uri: Uri) = viewModelScope.launch {
+        val g = repo.setPokFromUri(game, uri)
+        _messages.tryEmit(if (g != null) "POKEs añadidos: ${repo.pokCount(g.pokPath)} trucos" else "No se pudo leer el fichero")
+    }
+
+    fun removePok(game: Game) = viewModelScope.launch { repo.removePok(game) }
 
     fun addTapes(game: Game, uris: List<Uri>) {
         if (uris.isEmpty()) return

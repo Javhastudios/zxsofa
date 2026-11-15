@@ -40,6 +40,8 @@ class GameRepository(private val context: Context) {
         /** Era otra cara/cinta de un juego que ya estaba: se ha unido a él. */
         data class AddedSide(val game: Game) : ImportResult()
         data class Error(val message: String) : ImportResult()
+        /** Era un fichero .pok: se ha asignado a [game]. */
+        data class PokAttached(val game: Game) : ImportResult()
         /** Era una revista en PDF: se ha añadido a la biblioteca de revistas. */
         data class MagazineAdded(val magazine: Magazine) : ImportResult()
         /** Era una copia de seguridad de ZX Sofá: se han añadido [added] juegos. */
@@ -62,6 +64,9 @@ class GameRepository(private val context: Context) {
 
     /** Importa un fichero ya guardado en disco: un juego o una copia de seguridad completa. */
     suspend fun importFile(name: String, file: File): ImportResult = withContext(Dispatchers.IO) {
+        if (name.lowercase().endsWith(".pok")) {
+            return@withContext attachPokByName(name, file)
+        }
         if (name.lowercase().endsWith(".pdf") || isPdf(file)) {
             return@withContext importMagazine(name, file)
         }
@@ -249,6 +254,14 @@ class GameRepository(private val context: Context) {
 
         val cover = coverUrls ?: entry.inlays.firstOrNull()?.let { finder.mediaUrls(it) } ?: screen
         if (!cover.isNullOrEmpty()) g = setCover(g, cover)
+        // Instrucciones de ZXDB, si el juego aún no tiene ninguna
+        if (g.docs.isEmpty() && entry.instructions.isNotEmpty()) {
+            try { g = downloadInstructions(g, entry) } catch (_: Exception) {}
+        }
+        // POKEs de Tipshop, si hay un .pok con el mismo título
+        if (g.pokPath == null) {
+            try { g = autoPokes(g) ?: g } catch (_: Exception) {}
+        }
         refresh()
         return g
     }
@@ -306,7 +319,8 @@ class GameRepository(private val context: Context) {
     }
 
     suspend fun delete(game: Game) = withContext(Dispatchers.IO) {
-        (game.allFiles + listOfNotNull(game.coverPath, game.screenPath)).forEach { File(it).delete() }
+        (game.allFiles + game.docs + listOfNotNull(game.coverPath, game.screenPath, game.pokPath)).forEach { File(it).delete() }
+        File(docsRoot, game.id.toString()).delete()
         File(context.cacheDir, "cintas_${game.id}.m3u").delete()
         statesDir.listFiles { f -> f.name.startsWith("${game.id}_") }?.forEach { it.delete() }
         db.delete(game.id)
@@ -318,6 +332,108 @@ class GameRepository(private val context: Context) {
     fun autoStateFile(gameId: Long) = File(statesDir, "${gameId}_auto.state")
     fun slotStateFile(gameId: Long, slot: Int = 1) = File(statesDir, "${gameId}_slot$slot.state")
 
+
+    // ------------------------------------------------ instrucciones y POKEs
+
+    private val docsRoot = File(context.filesDir, "docs").apply { mkdirs() }
+    private val pokesDir = File(context.filesDir, "pokes").apply { mkdirs() }
+    private fun docsDir(id: Long) = File(docsRoot, id.toString()).apply { mkdirs() }
+
+    /** Baja de ZXDB las instrucciones (y mapas) del juego. */
+    suspend fun downloadInstructions(game: Game, entry: ZxdbEntry): Game = withContext(Dispatchers.IO) {
+        var g = db.get(game.id) ?: game
+        for (path in entry.instructions.take(4)) {
+            val name = safeName(path.substringAfterLast('/'))
+            if (g.docs.any { File(it).name == name }) continue
+            val dest = uniqueFile(docsDir(g.id), name)
+            if (finder.downloadAny(finder.mediaUrls(path), dest)) g = g.copy(docs = g.docs + dest.absolutePath)
+        }
+        db.update(g)
+        g
+    }
+
+    /** Busca instrucciones en ZXDB (identificando el juego si hace falta). Devuelve cuántas se añadieron. */
+    suspend fun fetchInstructions(game: Game): Int {
+        val entry = (game.zxdbId?.let { finder.getEntry(it) } ?: finder.identifyByMd5(game.md5)) ?: return -1
+        val before = game.docs.size
+        val g = downloadInstructions(game, entry)
+        refresh()
+        return g.docs.size - before
+    }
+
+    suspend fun addDocs(game: Game, uris: List<Uri>): Int = withContext(Dispatchers.IO) {
+        var g = db.get(game.id) ?: return@withContext 0
+        var n = 0
+        for (uri in uris) {
+            val name = safeName(displayName(uri) ?: "documento")
+            val dest = uniqueFile(docsDir(g.id), name)
+            context.contentResolver.openInputStream(uri)?.use { input -> dest.outputStream().use { input.copyTo(it) } } ?: continue
+            g = g.copy(docs = g.docs + dest.absolutePath)
+            n++
+        }
+        db.update(g)
+        _games.value = db.all()
+        n
+    }
+
+    suspend fun removeDoc(game: Game, path: String) = withContext(Dispatchers.IO) {
+        val g = db.get(game.id) ?: return@withContext
+        File(path).delete()
+        db.update(g.copy(docs = g.docs - path))
+        _games.value = db.all()
+    }
+
+    /** Descarga un .pok de Tipshop y lo asigna al juego. */
+    suspend fun setPokFromTipshop(game: Game, tipshopPath: String): Game? = withContext(Dispatchers.IO) {
+        val dest = File(pokesDir, "${game.id}.pok")
+        if (!finder.downloadAny(listOf(finder.pokUrl(tipshopPath)), dest)) return@withContext null
+        val g = (db.get(game.id) ?: game).copy(pokPath = dest.absolutePath)
+        db.update(g)
+        _games.value = db.all()
+        g
+    }
+
+    /** Busca y asigna automáticamente el .pok si el título coincide claramente. */
+    suspend fun autoPokes(game: Game): Game? {
+        val best = finder.pokCandidates(game.title, game.year, 1).firstOrNull() ?: return null
+        if (finder.pokScore(game.title, best) < 80) return null
+        return setPokFromTipshop(game, best)
+    }
+
+    suspend fun setPokFromUri(game: Game, uri: Uri): Game? = withContext(Dispatchers.IO) {
+        val dest = File(pokesDir, "${game.id}.pok")
+        context.contentResolver.openInputStream(uri)?.use { input -> dest.outputStream().use { input.copyTo(it) } } ?: return@withContext null
+        val g = (db.get(game.id) ?: game).copy(pokPath = dest.absolutePath)
+        db.update(g)
+        _games.value = db.all()
+        g
+    }
+
+    suspend fun removePok(game: Game) = withContext(Dispatchers.IO) {
+        val g = db.get(game.id) ?: return@withContext
+        g.pokPath?.let { File(it).delete() }
+        db.update(g.copy(pokPath = null))
+        _games.value = db.all()
+    }
+
+    /** Un .pok recibido suelto (Wi-Fi o +): se asigna al juego cuyo título coincide. */
+    private fun attachPokByName(name: String, file: File): ImportResult {
+        val key = CoverFinder.normalize(name.substringBeforeLast('.').substringBefore(" ("))
+        val g = db.all().firstOrNull { CoverFinder.normalize(it.title) == key || groupKey(it.fileName) == key }
+            ?: return ImportResult.Error("$name: no hay ningún juego con ese título. Añádelo desde la ficha del juego (POKEs).")
+        val dest = File(pokesDir, "${g.id}.pok")
+        file.copyTo(dest, overwrite = true)
+        db.update(g.copy(pokPath = dest.absolutePath))
+        _games.value = db.all()
+        return ImportResult.PokAttached(g)
+    }
+
+    /** Número de trucos de un .pok (líneas que empiezan por N). */
+    fun pokCount(path: String?): Int = try {
+        if (path == null) 0 else File(path).readLines(Charsets.ISO_8859_1).count { it.startsWith("N") }
+    } catch (e: Exception) {
+        0
+    }
 
     // ------------------------------------------------------------ revistas
 
@@ -420,6 +536,13 @@ class GameRepository(private val context: Context) {
                     put(entry, f)
                     states.put(entry)
                 }
+                val docs = org.json.JSONArray()
+                g.docs.forEach { path ->
+                    val entry = "$dir/docs/${File(path).name}"
+                    put(entry, File(path))
+                    docs.put(entry)
+                }
+                g.pokPath?.let { put("$dir/game.pok", File(it)) }
                 g.coverPath?.let { put("$dir/cover.img", File(it)) }
                 g.screenPath?.let { put("$dir/screen.img", File(it)) }
                 index.put(org.json.JSONObject().apply {
@@ -431,6 +554,8 @@ class GameRepository(private val context: Context) {
                     put("machine", g.machine.coreValue); put("controls", g.controls.serialize())
                     put("zxdbId", g.zxdbId); put("favorite", g.favorite); put("addedAt", g.addedAt)
                     put("lastPlayed", g.lastPlayed); put("playCount", g.playCount); put("notes", g.notes)
+                    put("docs", docs)
+                    put("pok", if (g.pokPath != null && File(g.pokPath).exists()) "$dir/game.pok" else null)
                 })
             }
             zip.putNextEntry(java.util.zip.ZipEntry(BACKUP_INDEX))
@@ -510,7 +635,17 @@ class GameRepository(private val context: Context) {
                         extract(entry, File(statesDir, "${id}_${entry.substringAfterLast('/')}"))
                     }
                 }
-                db.update(base.copy(id = id, coverPath = cover?.absolutePath, screenPath = screen?.absolutePath))
+                val docPaths = mutableListOf<String>()
+                o.optJSONArray("docs")?.let { d ->
+                    for (j in 0 until d.length()) {
+                        val entry = d.getString(j)
+                        val dest = uniqueFile(docsDir(id), safeName(entry.substringAfterLast('/')))
+                        if (extract(entry, dest)) docPaths += dest.absolutePath
+                    }
+                }
+                val pok = File(pokesDir, "$id.pok").takeIf { extract(JSONObjectStr(o, "pok"), it) }
+                db.update(base.copy(id = id, coverPath = cover?.absolutePath, screenPath = screen?.absolutePath,
+                    docs = docPaths, pokPath = pok?.absolutePath))
                 added++
             }
         }

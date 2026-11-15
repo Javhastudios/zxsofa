@@ -17,6 +17,9 @@ import java.util.concurrent.ConcurrentLinkedQueue
 /** Entrada del catálogo de la cinta: P = programa, G = grupo (TZX), T = texto. */
 data class TapeEntry(val block: Int, val kind: Char, val text: String)
 
+/** Un truco de un fichero .pok. */
+data class PokEntry(val index: Int, val active: Boolean, val askValue: Boolean, val broken: Boolean, val name: String)
+
 /** Qué cargar y con qué opciones del núcleo. */
 data class LaunchConfig(
     val gamePath: String,
@@ -139,6 +142,20 @@ class EmulatorEngine(
 
     /** Reinicia y carga la cinta desde el bloque indicado. */
     fun loadFromBlock(block: Int, done: (Boolean) -> Unit) = post { done(NativeCore.nativeTapeLoadBlock(block)) }
+
+    fun pokLoad(path: String, done: (Int) -> Unit = {}) = post { done(NativeCore.nativePokLoad(path)) }
+
+    fun pokList(done: (List<PokEntry>) -> Unit) = post {
+        done(NativeCore.nativePokList().lineSequence().mapNotNull { line ->
+            val p = line.split('\t', limit = 5)
+            if (p.size < 5) null
+            else PokEntry(p[0].toIntOrNull() ?: return@mapNotNull null, p[1] == "1", p[2] == "1", p[3] == "1", p[4])
+        }.toList())
+    }
+
+    fun pokSet(index: Int, active: Boolean, value: Int, done: (Boolean) -> Unit) = post {
+        done(NativeCore.nativePokSet(index, active, value))
+    }
 
     fun setJoystickType(type: Int) = post { NativeCore.nativeSetJoystickType(type) }
 

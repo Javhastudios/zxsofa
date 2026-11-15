@@ -31,7 +31,9 @@ class GameDb(context: Context) : SQLiteOpenHelper(context, "games.db", null, VER
                 added_at INTEGER NOT NULL,
                 last_played INTEGER NOT NULL DEFAULT 0,
                 play_count INTEGER NOT NULL DEFAULT 0,
-                notes TEXT
+                notes TEXT,
+                docs TEXT,
+                pok_path TEXT
             )
             """.trimIndent()
         )
@@ -43,6 +45,10 @@ class GameDb(context: Context) : SQLiteOpenHelper(context, "games.db", null, VER
         // Nunca borrar la tabla: son los datos del usuario
         if (oldVersion < 2) db.execSQL("ALTER TABLE games ADD COLUMN extra_files TEXT")
         if (oldVersion < 3) createMagazines(db)
+        if (oldVersion < 4) {
+            db.execSQL("ALTER TABLE games ADD COLUMN docs TEXT")
+            db.execSQL("ALTER TABLE games ADD COLUMN pok_path TEXT")
+        }
     }
 
     private fun createMagazines(db: SQLiteDatabase) {
@@ -137,6 +143,8 @@ class GameDb(context: Context) : SQLiteOpenHelper(context, "games.db", null, VER
         put("last_played", lastPlayed)
         put("play_count", playCount)
         put("notes", notes)
+        put("docs", docs.joinToString("\n").ifBlank { null })
+        put("pok_path", pokPath)
     }
 
     private fun Cursor.str(col: String): String? = getColumnIndexOrThrow(col).let { if (isNull(it)) null else getString(it) }
@@ -162,10 +170,12 @@ class GameDb(context: Context) : SQLiteOpenHelper(context, "games.db", null, VER
         lastPlayed = long("last_played"),
         playCount = long("play_count").toInt(),
         notes = str("notes"),
+        docs = str("docs")?.split("\n")?.filter { it.isNotBlank() } ?: emptyList(),
+        pokPath = str("pok_path"),
     )
 
     companion object {
-        const val VERSION = 3
+        const val VERSION = 4
 
         /** Orden "natural": MicroHobby 2 antes que MicroHobby 10. */
         fun naturalCompare(a: String, b: String): Int {

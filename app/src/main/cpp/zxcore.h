@@ -83,6 +83,13 @@ int  zx_tape_load_block(int block);
 int  zx_tape_block(void);
 int  zx_tape_set_block(int block);
 
+/* POKEs (.pok). zx_pok_load devuelve el número de trucos o -1.
+   zx_pok_list: una línea por truco "indice\tactivo\tpide_valor\troto\tnombre". */
+int  zx_pok_load(const char *path);
+void zx_pok_clear(void);
+const char *zx_pok_list(void);
+int  zx_pok_set(int index, int active, int value);
+
 /* Mensaje pendiente del nucleo (o NULL). Se vacia al leerlo. */
 const char *zx_take_message(void);
 

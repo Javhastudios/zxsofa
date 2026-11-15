@@ -47,4 +47,10 @@ object NativeCore {
     // Posición de la cinta (no va dentro de las partidas guardadas de Fuse)
     external fun nativeTapeBlock(): Int
     external fun nativeTapeSetBlock(block: Int): Boolean
+
+    // POKEs (.pok)
+    external fun nativePokLoad(path: String): Int
+    external fun nativePokClear()
+    external fun nativePokList(): String
+    external fun nativePokSet(index: Int, active: Boolean, value: Int): Boolean
 }

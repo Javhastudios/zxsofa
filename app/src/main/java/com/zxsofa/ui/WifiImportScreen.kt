@@ -52,6 +52,7 @@ fun WifiImportScreen(vm: LibraryViewModel) {
                 is GameRepository.ImportResult.Backup -> "colección recibida: ${result.added} juegos nuevos" +
                     if (result.skipped > 0) " (${result.skipped} ya estaban)" else ""
                 is GameRepository.ImportResult.MagazineAdded -> "revista añadida ✔ (${result.magazine.pages} páginas)"
+                is GameRepository.ImportResult.PokAttached -> "POKEs añadidos a ${result.game.title} ✔"
                 is GameRepository.ImportResult.Added -> "añadido ✔"
                 is GameRepository.ImportResult.Duplicate -> "ya estaba en la colección"
                 is GameRepository.ImportResult.AddedSide -> "añadido como otra cara de ${result.game.title} ✔"

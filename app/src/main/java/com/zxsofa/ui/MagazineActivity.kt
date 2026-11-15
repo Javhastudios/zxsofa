@@ -19,6 +19,9 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -108,6 +111,10 @@ class MagazineActivity : ComponentActivity() {
 
     companion object {
         fun intent(ctx: Context) = Intent(ctx, MagazineActivity::class.java)
+
+        /** Abre un documento suelto (instrucciones de un juego): PDF, TXT o imagen. */
+        fun docIntent(ctx: Context, path: String, title: String) =
+            Intent(ctx, MagazineActivity::class.java).putExtra("docPath", path).putExtra("docTitle", title)
     }
 
     private val repo: GameRepository get() = (application as ZXSofaApp).repository
@@ -115,6 +122,12 @@ class MagazineActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        val docPath = intent.getStringExtra("docPath")
+        if (docPath != null) {
+            val title = intent.getStringExtra("docTitle") ?: File(docPath).name
+            setContent { ZXSofaTheme { DocumentViewer(repo, docPath, title, onClose = { finish() }) } }
+            return
+        }
         lifecycleScope.launch { repo.refreshMagazines() }
         setContent {
             ZXSofaTheme {
@@ -306,7 +319,7 @@ private fun ReaderPager(repo: GameRepository, m: Magazine, pdf: PdfPages, onClos
         zoom = 1f
         offset = Offset.Zero
         delay(400)
-        pagesOf(pager.currentPage).firstOrNull()?.let { repo.setMagazinePage(m.id, it) }
+        if (m.id >= 0) pagesOf(pager.currentPage).firstOrNull()?.let { repo.setMagazinePage(m.id, it) }
     }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     LaunchedEffect(showBars) {
@@ -456,5 +469,130 @@ private fun PdfPageImage(pdf: PdfPages, index: Int, targetWidth: Int, alignment:
         } else {
             Text("Página ${index + 1}…", color = Color.Gray)
         }
+    }
+}
+
+// --------------------------------------------------------------- documentos
+
+@Composable
+private fun DocumentViewer(repo: GameRepository, path: String, title: String, onClose: () -> Unit) {
+    val ext = path.substringAfterLast('.', "").lowercase()
+    when {
+        ext == "pdf" -> {
+            var pages by remember { mutableStateOf<PdfPages?>(null) }
+            var error by remember { mutableStateOf(false) }
+            LaunchedEffect(path) { pages = try { PdfPages(File(path)) } catch (e: Exception) { error = true; null } }
+            DisposableEffect(path) { onDispose { pages?.close() } }
+            Box(Modifier.fillMaxSize().background(Color(0xFF111111))) {
+                val p = pages
+                when {
+                    error -> Text("No se pudo abrir el PDF.", Modifier.align(Alignment.Center), color = Color.White)
+                    p != null -> ReaderPager(repo, Magazine(id = -1, title = title, path = path, pages = p.count), p, onClose)
+                }
+            }
+        }
+        ext in listOf("jpg", "jpeg", "png", "gif", "webp", "bmp") -> ImageDocument(path, title, onClose)
+        else -> TextDocument(path, title, onClose)
+    }
+}
+
+@Composable
+private fun DocTopBar(title: String, onClose: () -> Unit, actions: @Composable () -> Unit = {}) {
+    Row(
+        Modifier.fillMaxWidth().background(Color(0xCC000000)).padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Cerrar", tint = Color.White) }
+        Text(title, color = Color.White, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        actions()
+    }
+}
+
+/** Instrucciones en texto: muchas vienen en codificaciones antiguas, probamos UTF-8 y si no Latin-1. */
+private fun readOldText(file: File): String {
+    val bytes = file.readBytes()
+    val text = try {
+        java.nio.charset.StandardCharsets.UTF_8.newDecoder()
+            .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+            .decode(java.nio.ByteBuffer.wrap(bytes)).toString()
+    } catch (e: Exception) {
+        String(bytes, Charsets.ISO_8859_1)
+    }
+    val ext = file.extension.lowercase()
+    return if (ext == "htm" || ext == "html") {
+        @Suppress("DEPRECATION")
+        android.text.Html.fromHtml(text).toString()
+    } else text.replace("\r\n", "\n").replace('\r', '\n')
+}
+
+@Composable
+private fun TextDocument(path: String, title: String, onClose: () -> Unit) {
+    var text by remember { mutableStateOf<String?>(null) }
+    var size by remember { mutableFloatStateOf(15f) }
+    val scroll = androidx.compose.foundation.rememberScrollState()
+    val scope = rememberCoroutineScope()
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(path) {
+        text = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try { readOldText(File(path)) } catch (e: Exception) { "No se pudo leer el documento." }
+        }
+        runCatching { focus.requestFocus() }
+    }
+    Column(Modifier.fillMaxSize().background(Color(0xFF0E0E10))) {
+        DocTopBar(title, onClose) {
+            TextButton(onClick = { size = (size - 2f).coerceAtLeast(9f) }) { Text("A-", color = ZxColors.Cyan) }
+            TextButton(onClick = { size = (size + 2f).coerceAtMost(32f) }) { Text("A+", color = ZxColors.Cyan) }
+        }
+        Text(
+            text ?: "Cargando…",
+            color = Color(0xFFEDEDED),
+            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+            fontSize = androidx.compose.ui.unit.TextUnit(size, androidx.compose.ui.unit.TextUnitType.Sp),
+            modifier = Modifier
+                .fillMaxSize()
+                .focusRequester(focus)
+                .focusable()
+                .onPreviewKeyEvent { e ->
+                    if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                    when (e.key.nativeKeyCode) {
+                        KeyEvent.KEYCODE_DPAD_DOWN -> { scope.launch { scroll.animateScrollBy(300f) }; true }
+                        KeyEvent.KEYCODE_DPAD_UP -> { scope.launch { scroll.animateScrollBy(-300f) }; true }
+                        KeyEvent.KEYCODE_DPAD_RIGHT -> { size = (size + 2f).coerceAtMost(32f); true }
+                        KeyEvent.KEYCODE_DPAD_LEFT -> { size = (size - 2f).coerceAtLeast(9f); true }
+                        else -> false
+                    }
+                }
+                .verticalScroll(scroll)
+                .padding(16.dp),
+        )
+    }
+}
+
+@Composable
+private fun ImageDocument(path: String, title: String, onClose: () -> Unit) {
+    var zoom by remember { mutableFloatStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+    val bmp = remember(path) { android.graphics.BitmapFactory.decodeFile(path) }
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
+        if (bmp != null) {
+            Image(
+                bitmap = bmp.asImageBitmap(),
+                contentDescription = title,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        detectTransformGestures { _, pan, z, _ ->
+                            zoom = (zoom * z).coerceIn(1f, 6f)
+                            offset = if (zoom <= 1.01f) Offset.Zero else offset + pan
+                        }
+                    }
+                    .pointerInput(Unit) { detectTapGestures(onDoubleTap = { zoom = if (zoom > 1.01f) 1f else 2.5f; offset = Offset.Zero }) }
+                    .graphicsLayer { scaleX = zoom; scaleY = zoom; translationX = offset.x; translationY = offset.y },
+            )
+        } else {
+            Text("No se pudo abrir la imagen.", Modifier.align(Alignment.Center), color = Color.White)
+        }
+        Box(Modifier.align(Alignment.TopCenter)) { DocTopBar(title, onClose) }
     }
 }

@@ -1,6 +1,11 @@
 package com.zxsofa.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
+import java.io.File
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -93,6 +98,7 @@ fun DetailScreen(vm: LibraryViewModel, gameId: Long, onPlay: (Game, Boolean) -> 
                     InfoLine("Partidas", if (game.playCount > 0) "${game.playCount}" else null)
                     InfoLine("Última vez", if (game.lastPlayed > 0) DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(game.lastPlayed)) else null)
                     InfoLine("ZXDB", game.zxdbId)
+                    DocsAndPokes(vm, game)
                     if (!game.notes.isNullOrBlank()) {
                         SectionTitle("Notas")
                         Text(game.notes)
@@ -179,4 +185,63 @@ private fun controlsSummary(g: Game): String {
         val k = listOf(c.up, c.down, c.left, c.right).joinToString("") { ZxKeyboard.coreKeyLabel(it).take(1) }
         "Teclas $k + ${ZxKeyboard.coreKeyLabel(c.fire)}"
     } else c.mode.label
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun DocsAndPokes(vm: LibraryViewModel, game: Game) {
+    val context = LocalContext.current
+    var choosePok by remember { mutableStateOf(false) }
+    val pickDocs = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { vm.addDocs(game, it) }
+    val pickPok = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) vm.setPokFromUri(game, uri) }
+
+    SectionTitle("Instrucciones y documentos")
+    if (game.docs.isEmpty()) {
+        Text("Sin documentos. Búscalos en ZXDB o añade los tuyos (PDF, TXT o imágenes).", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    game.docs.forEach { path ->
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinedButton(
+                onClick = { context.startActivity(MagazineActivity.docIntent(context, path, File(path).name)) },
+                modifier = Modifier.weight(1f),
+            ) { Text("📄 " + File(path).name, maxLines = 1) }
+            TextButton(onClick = { vm.removeDoc(game, path) }) { Text("Quitar") }
+        }
+    }
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
+        OutlinedButton(onClick = { vm.fetchInstructions(game) }) { Text("Buscar en ZXDB") }
+        OutlinedButton(onClick = { runCatching { pickDocs.launch(arrayOf("*/*")) } }) { Text("Añadir documento") }
+    }
+
+    SectionTitle("POKEs (trucos)")
+    val count = remember(game.pokPath) { vm.repo.pokCount(game.pokPath) }
+    if (game.pokPath != null) {
+        Text("$count trucos disponibles. Actívalos durante la partida desde el menú de pausa.")
+    } else {
+        Text("Sin POKEs. Búscalos en The Tipshop o añade un fichero .pok.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
+        OutlinedButton(onClick = { choosePok = true }) { Text("Buscar POKEs") }
+        OutlinedButton(onClick = { runCatching { pickPok.launch(arrayOf("*/*")) } }) { Text("Añadir .pok") }
+        if (game.pokPath != null) TextButton(onClick = { vm.removePok(game) }) { Text("Quitar POKEs") }
+    }
+
+    if (choosePok) {
+        val candidates = remember(game.title) { vm.repo.finder.pokCandidates(game.title, game.year) }
+        AlertDialog(
+            onDismissRequest = { choosePok = false },
+            title = { Text("POKEs de The Tipshop") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    if (candidates.isEmpty()) Text("No hay POKEs para «${game.title}». Prueba a corregir el título en Editar.")
+                    candidates.forEach { c ->
+                        TextButton(onClick = { choosePok = false; vm.setPokFromTipshop(game, c) }) {
+                            Text(c.substringAfterLast('/').removeSuffix(".pok"))
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { choosePok = false }) { Text("Cerrar") } },
+        )
+    }
 }

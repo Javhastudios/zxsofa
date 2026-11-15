@@ -34,6 +34,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -205,20 +206,20 @@ fun SpectrumKeyboard(onKey: (code: Int, down: Boolean) -> Unit, modifier: Modifi
         modifier
             .fillMaxWidth()
             .background(Color(0xEE101012), RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
-            .padding(6.dp),
-        verticalArrangement = Arrangement.spacedBy(5.dp),
+            .padding(4.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         ZxKeyboard.rows.forEach { row ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                 row.forEach { key ->
-                    val isCaps = key == ZxKeyboard.CAPS
-                    val isSym = key == ZxKeyboard.SYMBOL
+                    val isCaps = key.modifier && key.code == ZxKeyboard.CAPS.code
+                    val isSym = key.modifier && key.code == ZxKeyboard.SYMBOL.code
                     val latched = (isCaps && caps) || (isSym && symbol)
                     KeyCap(
                         key = key,
                         latched = latched,
                         height = keyHeight,
-                        modifier = Modifier.weight(if (key.label.length > 1) 1.3f else 1f),
+                        modifier = Modifier.weight(key.weight),
                         onPress = { down ->
                             when {
                                 isCaps -> if (down) caps = !caps
@@ -226,10 +227,10 @@ fun SpectrumKeyboard(onKey: (code: Int, down: Boolean) -> Unit, modifier: Modifi
                                 down -> {
                                     if (caps) onKey(ZxKeyboard.CAPS.code, true)
                                     if (symbol) onKey(ZxKeyboard.SYMBOL.code, true)
-                                    onKey(key.code, true)
+                                    key.codes.forEach { onKey(it, true) }
                                 }
                                 else -> {
-                                    onKey(key.code, false)
+                                    key.codes.asReversed().forEach { onKey(it, false) }
                                     if (caps) { onKey(ZxKeyboard.CAPS.code, false); caps = false }
                                     if (symbol) { onKey(ZxKeyboard.SYMBOL.code, false); symbol = false }
                                 }
@@ -258,6 +259,7 @@ private fun KeyCap(key: ZxKey, latched: Boolean, height: Dp, modifier: Modifier,
                 shape,
             )
             .border(1.dp, Color(0xFF55555F), shape)
+            .testTag("key_" + key.label + key.sub)
             .pointerInput(key) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
@@ -296,10 +298,15 @@ private fun KeyCap(key: ZxKey, latched: Boolean, height: Dp, modifier: Modifier,
                     color = if (dark) Color.Black else Color.White,
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Bold,
-                    fontSize = if (key.label.length > 1) 11.sp else 17.sp,
+                    fontSize = when {
+                        key.label.length > 4 -> 8.sp
+                        key.label.length > 1 -> 10.sp
+                        else -> 16.sp
+                    },
+                    maxLines = 1,
                 )
                 if (key.sub.isNotEmpty()) {
-                    Text(key.sub, color = if (dark) Color.Black else ZxColors.Red, fontSize = 8.sp)
+                    Text(key.sub, color = if (dark) Color.Black else ZxColors.Red, fontSize = 7.sp, maxLines = 1)
                 }
                 if (showExtras && key.keyword.isNotEmpty()) {
                     Text(key.keyword, color = if (dark) Color.Black else Color(0xFFCFCFCF), fontSize = 7.sp, maxLines = 1)

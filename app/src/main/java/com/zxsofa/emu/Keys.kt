@@ -42,13 +42,27 @@ object Pad {
  * Una tecla del Spectrum: etiqueta, código RETROK, texto inferior, palabra clave del 48K
  * (modo K) y símbolo con SYMBOL SHIFT, como en las teclas de goma originales.
  */
-data class ZxKey(val label: String, val code: Int, val sub: String = "", val keyword: String = "", val symbol: String = "")
+data class ZxKey(
+    val label: String,
+    val code: Int,
+    val sub: String = "",
+    val keyword: String = "",
+    val symbol: String = "",
+    /** Teclas compuestas del Spectrum+ (p. ej. DELETE = CAPS + 0): códigos que se pulsan a la vez. */
+    val combo: List<Int> = emptyList(),
+    /** Ancho relativo en la fila. */
+    val weight: Float = 1f,
+    /** CAPS SHIFT / SYMBOL SHIFT: se quedan enganchadas hasta la siguiente tecla. */
+    val modifier: Boolean = false,
+) {
+    val codes: List<Int> get() = combo.ifEmpty { listOf(code) }
+}
 
 object ZxKeyboard {
-    val CAPS = ZxKey("CAPS", RetroK.LSHIFT, "SHIFT")
-    val SYMBOL = ZxKey("SYMB", RetroK.LCTRL, "SHIFT")
-    val ENTER = ZxKey("ENTER", RetroK.RETURN)
-    val SPACE = ZxKey("SPACE", RetroK.SPACE, "BREAK")
+    val CAPS = ZxKey("CAPS", RetroK.LSHIFT, "SHIFT", modifier = true, weight = 1.5f)
+    val SYMBOL = ZxKey("SYMB", RetroK.LCTRL, "SHIFT", modifier = true, weight = 1.5f)
+    val ENTER = ZxKey("ENTER", RetroK.RETURN, weight = 2f)
+    val SPACE = ZxKey("SPACE", RetroK.SPACE, weight = 3f)
 
     private val keywords = mapOf(
         'Q' to "PLOT", 'W' to "DRAW", 'E' to "REM", 'R' to "RUN", 'T' to "RAND", 'Y' to "RETURN", 'U' to "IF",
@@ -63,12 +77,21 @@ object ZxKeyboard {
         'Z' to ":", 'X' to "£", 'C' to "?", 'V' to "/", 'B' to "*", 'N' to ",", 'M' to ".",
     )
     private fun key(c: Char) = ZxKey(c.toString(), if (c.isDigit()) c.code else RetroK.letter(c), keyword = keywords[c] ?: "", symbol = symbols[c] ?: "")
+    private fun caps(label: String, k: Char, sub: String = "", w: Float = 1f) =
+        ZxKey(label, 0, sub, combo = listOf(RetroK.LSHIFT, if (k.isDigit()) k.code else RetroK.letter(k)), weight = w)
+    private fun sym(label: String, k: Char, w: Float = 1f) =
+        ZxKey(label, 0, combo = listOf(RetroK.LCTRL, RetroK.letter(k)), weight = w)
 
+    /** Distribución del Spectrum+ / 128K, con las teclas compuestas en teclas propias. */
     val rows: List<List<ZxKey>> = listOf(
-        "1234567890".map { key(it) },
-        "QWERTYUIOP".map { key(it) },
-        "ASDFGHJKL".map { key(it) } + ENTER,
-        listOf(CAPS) + "ZXCVBNM".map { key(it) } + listOf(SYMBOL, SPACE),
+        listOf(caps("TRUE", '3', "VIDEO"), caps("INV", '4', "VIDEO")) + "1234567890".map { key(it) } +
+            ZxKey("BREAK", 0, combo = listOf(RetroK.LSHIFT, RetroK.SPACE)),
+        listOf(caps("DELETE", '0', w = 1.3f), caps("GRAPH", '9')) + "QWERTYUIOP".map { key(it) },
+        listOf(ZxKey("EXTEND", 0, "MODE", combo = listOf(RetroK.LSHIFT, RetroK.LCTRL), weight = 1.3f), caps("EDIT", '1')) +
+            "ASDFGHJKL".map { key(it) } + ENTER,
+        listOf(CAPS, caps("CAPS", '2', "LOCK")) + "ZXCVBNM".map { key(it) } + sym(".", 'm') + CAPS.copy(weight = 1.5f),
+        listOf(SYMBOL, sym(";", 'o'), sym("\"", 'p'), caps("←", '5'), caps("→", '8'), SPACE, caps("↑", '7'), caps("↓", '6'),
+            sym(",", 'n'), SYMBOL.copy(weight = 1.5f)),
     )
 
     /** Nombres de teclas tal y como los acepta la opción fuse_joypad_* del núcleo. */

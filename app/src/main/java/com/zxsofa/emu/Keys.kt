@@ -38,8 +38,11 @@ object Pad {
     const val R = 1 shl 11      // ESPACIO
 }
 
-/** Una tecla del Spectrum: etiqueta y código RETROK. */
-data class ZxKey(val label: String, val code: Int, val sub: String = "")
+/**
+ * Una tecla del Spectrum: etiqueta, código RETROK, texto inferior, palabra clave del 48K
+ * (modo K) y símbolo con SYMBOL SHIFT, como en las teclas de goma originales.
+ */
+data class ZxKey(val label: String, val code: Int, val sub: String = "", val keyword: String = "", val symbol: String = "")
 
 object ZxKeyboard {
     val CAPS = ZxKey("CAPS", RetroK.LSHIFT, "SHIFT")
@@ -47,11 +50,25 @@ object ZxKeyboard {
     val ENTER = ZxKey("ENTER", RetroK.RETURN)
     val SPACE = ZxKey("SPACE", RetroK.SPACE, "BREAK")
 
+    private val keywords = mapOf(
+        'Q' to "PLOT", 'W' to "DRAW", 'E' to "REM", 'R' to "RUN", 'T' to "RAND", 'Y' to "RETURN", 'U' to "IF",
+        'I' to "INPUT", 'O' to "POKE", 'P' to "PRINT", 'A' to "NEW", 'S' to "SAVE", 'D' to "DIM", 'F' to "FOR",
+        'G' to "GOTO", 'H' to "GOSUB", 'J' to "LOAD", 'K' to "LIST", 'L' to "LET", 'Z' to "COPY", 'X' to "CLEAR",
+        'C' to "CONT", 'V' to "CLS", 'B' to "BORDER", 'N' to "NEXT", 'M' to "PAUSE",
+    )
+    private val symbols = mapOf(
+        '1' to "!", '2' to "@", '3' to "#", '4' to "$", '5' to "%", '6' to "&", '7' to "'", '8' to "(", '9' to ")", '0' to "_",
+        'Q' to "<=", 'W' to "<>", 'E' to ">=", 'R' to "<", 'T' to ">", 'Y' to "AND", 'U' to "OR", 'I' to "AT", 'O' to ";", 'P' to "\"",
+        'A' to "STOP", 'S' to "NOT", 'D' to "STEP", 'F' to "TO", 'G' to "THEN", 'H' to "↑", 'J' to "-", 'K' to "+", 'L' to "=",
+        'Z' to ":", 'X' to "£", 'C' to "?", 'V' to "/", 'B' to "*", 'N' to ",", 'M' to ".",
+    )
+    private fun key(c: Char) = ZxKey(c.toString(), if (c.isDigit()) c.code else RetroK.letter(c), keyword = keywords[c] ?: "", symbol = symbols[c] ?: "")
+
     val rows: List<List<ZxKey>> = listOf(
-        "1234567890".map { ZxKey(it.toString(), it.code) },
-        "QWERTYUIOP".map { ZxKey(it.toString(), RetroK.letter(it)) },
-        "ASDFGHJKL".map { ZxKey(it.toString(), RetroK.letter(it)) } + ENTER,
-        listOf(CAPS) + "ZXCVBNM".map { ZxKey(it.toString(), RetroK.letter(it)) } + listOf(SYMBOL, SPACE),
+        "1234567890".map { key(it) },
+        "QWERTYUIOP".map { key(it) },
+        "ASDFGHJKL".map { key(it) } + ENTER,
+        listOf(CAPS) + "ZXCVBNM".map { key(it) } + listOf(SYMBOL, SPACE),
     )
 
     /** Nombres de teclas tal y como los acepta la opción fuse_joypad_* del núcleo. */

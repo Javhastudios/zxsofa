@@ -277,16 +277,33 @@ private fun KeyCap(key: ZxKey, latched: Boolean, height: Dp, modifier: Modifier,
             },
         contentAlignment = Alignment.Center,
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                key.label,
-                color = if (pressed || latched) Color.Black else Color.White,
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Bold,
-                fontSize = if (key.label.length > 1) 11.sp else 17.sp,
-            )
-            if (key.sub.isNotEmpty()) {
-                Text(key.sub, color = if (pressed || latched) Color.Black else ZxColors.Red, fontSize = 8.sp)
+        val dark = pressed || latched
+        val showExtras = height >= 50.dp
+        Box(Modifier.fillMaxSize()) {
+            if (showExtras && key.symbol.isNotEmpty()) {
+                Text(
+                    key.symbol,
+                    color = if (dark) Color.Black else ZxColors.Red,
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(end = 3.dp, top = 1.dp),
+                )
+            }
+            Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    key.label,
+                    color = if (dark) Color.Black else Color.White,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = if (key.label.length > 1) 11.sp else 17.sp,
+                )
+                if (key.sub.isNotEmpty()) {
+                    Text(key.sub, color = if (dark) Color.Black else ZxColors.Red, fontSize = 8.sp)
+                }
+                if (showExtras && key.keyword.isNotEmpty()) {
+                    Text(key.keyword, color = if (dark) Color.Black else Color(0xFFCFCFCF), fontSize = 7.sp, maxLines = 1)
+                }
             }
         }
     }

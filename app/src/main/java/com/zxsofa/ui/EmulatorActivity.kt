@@ -478,9 +478,11 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
                 Column(Modifier.fillMaxSize()) {
                     screen(Modifier.fillMaxWidth().aspectRatio(4f / 3f))
                     TopButtons(Modifier.fillMaxWidth())
-                    Box(Modifier.fillMaxWidth().weight(1f)) {
+                    BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
                         if (keyboardOpen) {
-                            SpectrumKeyboard(onKey, Modifier.align(Alignment.BottomCenter), keyHeight = 52.dp)
+                            // El teclado aprovecha todo el alto disponible (teclas grandes para programar)
+                            val kh = ((maxHeight - 40.dp) / 4 - 5.dp).coerceIn(44.dp, 78.dp)
+                            SpectrumKeyboard(onKey, Modifier.align(Alignment.BottomCenter), keyHeight = kh)
                         } else {
                             Translucent(opacity.coerceAtLeast(0.6f)) {
                                 Box(Modifier.fillMaxSize().padding(16.dp)) {

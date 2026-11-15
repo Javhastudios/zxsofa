@@ -43,4 +43,8 @@ object NativeCore {
     // Catálogo de la cinta (recopilatorios) y carga desde un bloque
     external fun nativeTapeCatalog(): String
     external fun nativeTapeLoadBlock(block: Int): Boolean
+
+    // Posición de la cinta (no va dentro de las partidas guardadas de Fuse)
+    external fun nativeTapeBlock(): Int
+    external fun nativeTapeSetBlock(block: Int): Boolean
 }

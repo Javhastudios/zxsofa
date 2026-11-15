@@ -131,3 +131,20 @@ int zx_tape_load_block(int block)
    fuse_emulation_unpause();
    return error == 0;
 }
+
+/* Posición de la cinta (bloque actual). Las partidas guardadas de Fuse no la
+   incluyen, así que la guardamos aparte para que los juegos multicarga sigan
+   encontrando la fase siguiente al continuar una partida. */
+int zx_tape_block(void)
+{
+   if (!zx_is_loaded() || !tape_present())
+      return -1;
+   return tape_get_current_block();
+}
+
+int zx_tape_set_block(int block)
+{
+   if (!zx_is_loaded() || !tape_present() || block < 0)
+      return 0;
+   return tape_select_block((size_t)block) == 0;
+}

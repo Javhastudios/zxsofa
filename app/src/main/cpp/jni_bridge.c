@@ -175,3 +175,13 @@ JNIEXPORT jboolean JNICALL FN(nativeTapeLoadBlock)(JNIEnv *env, jobject thiz, ji
 {
    return zx_tape_load_block(block) ? JNI_TRUE : JNI_FALSE;
 }
+
+JNIEXPORT jint JNICALL FN(nativeTapeBlock)(JNIEnv *env, jobject thiz)
+{
+   return zx_tape_block();
+}
+
+JNIEXPORT jboolean JNICALL FN(nativeTapeSetBlock)(JNIEnv *env, jobject thiz, jint block)
+{
+   return zx_tape_set_block(block) ? JNI_TRUE : JNI_FALSE;
+}

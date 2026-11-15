@@ -79,6 +79,10 @@ const char *zx_tape_catalog(void);
 /* Reinicia y carga la cinta a partir del bloque indicado. */
 int  zx_tape_load_block(int block);
 
+/* Bloque actual de la cinta (o -1) y situar la cinta en un bloque sin reiniciar. */
+int  zx_tape_block(void);
+int  zx_tape_set_block(int block);
+
 /* Mensaje pendiente del nucleo (o NULL). Se vacia al leerlo. */
 const char *zx_take_message(void);
 

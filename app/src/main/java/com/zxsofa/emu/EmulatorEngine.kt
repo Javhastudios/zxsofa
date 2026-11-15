@@ -93,25 +93,48 @@ class EmulatorEngine(
 
     fun reset() = post { NativeCore.nativeReset() }
 
-    fun saveState(file: File, done: (Boolean) -> Unit) = post {
+    fun saveState(file: File, done: (Boolean) -> Unit) = post { done(writeState(file)) }
+
+    fun loadState(file: File, done: (Boolean) -> Unit) = post { done(readState(file)) }
+
+    // Las partidas de Fuse no guardan por dónde va la cinta: lo guardamos al lado
+    // (cara puesta y bloque) para que los juegos multicarga encuentren la fase siguiente.
+    private fun tapeFile(state: File) = File(state.path + ".tape")
+
+    private fun writeState(file: File): Boolean {
         file.parentFile?.mkdirs()
-        done(NativeCore.nativeSaveState(file.absolutePath))
+        if (!NativeCore.nativeSaveState(file.absolutePath)) return false
+        try {
+            tapeFile(file).writeText("${NativeCore.nativeTapeIndex()} ${NativeCore.nativeTapeBlock()}")
+        } catch (_: Exception) {
+        }
+        return true
     }
 
-    fun loadState(file: File, done: (Boolean) -> Unit) = post {
-        done(file.exists() && NativeCore.nativeLoadState(file.absolutePath))
+    private fun readState(file: File): Boolean {
+        if (!file.exists() || !NativeCore.nativeLoadState(file.absolutePath)) return false
+        try {
+            val t = tapeFile(file)
+            if (t.exists()) {
+                val (side, block) = t.readText().trim().split(" ").map { it.toInt() }
+                if (NativeCore.nativeTapeCount() > side && NativeCore.nativeTapeIndex() != side) NativeCore.nativeTapeSelect(side)
+                if (block >= 0) NativeCore.nativeTapeSetBlock(block)
+            }
+        } catch (_: Exception) {
+        }
+        return true
     }
 
     /** Cambia a otra cinta/cara sin reiniciar el Spectrum. */
     fun selectTape(index: Int, done: (Boolean) -> Unit) = post { done(NativeCore.nativeTapeSelect(index)) }
 
     /** Lee los programas grabados en la cinta actual. */
-    fun tapeCatalog(done: (List<TapeEntry>) -> Unit) = post {
+    fun tapeCatalog(done: (List<TapeEntry>, Int) -> Unit) = post {
         val list = NativeCore.nativeTapeCatalog().lineSequence().mapNotNull { line ->
             val p = line.split('\t')
             if (p.size < 3) null else p[0].toIntOrNull()?.let { TapeEntry(it, p[1].firstOrNull() ?: 'T', p[2]) }
         }.toList()
-        done(list)
+        done(list, NativeCore.nativeTapeIndex())
     }
 
     /** Reinicia y carga la cinta desde el bloque indicado. */
@@ -182,7 +205,7 @@ class EmulatorEngine(
             if (cfg.stateToLoad != null && cfg.stateToLoad.exists()) {
                 // Un fotograma antes para que la máquina esté inicializada
                 NativeCore.nativeRunFrame(ShortArray(4096))
-                if (!NativeCore.nativeLoadState(cfg.stateToLoad.absolutePath)) {
+                if (!readState(cfg.stateToLoad)) {
                     listener.onMessage("No se pudo restaurar la partida guardada")
                 }
             }
@@ -230,10 +253,7 @@ class EmulatorEngine(
                 val cmd = commands.poll() ?: break
                 cmd()
             }
-            saveOnExit?.let { f ->
-                f.parentFile?.mkdirs()
-                NativeCore.nativeSaveState(f.absolutePath)
-            }
+            saveOnExit?.let { f -> writeState(f) }
         } catch (t: Throwable) {
             Log.e(TAG, "Error en el emulador", t)
             listener.onError(t.message ?: "Error en el emulador")

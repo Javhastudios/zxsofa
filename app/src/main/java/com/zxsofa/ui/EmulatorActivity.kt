@@ -142,7 +142,10 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
             engine.start(
                 LaunchConfig(
                     gamePath = app.repository.launchPath(g),
-                    options = CoreOptions.forGame(g, app.settings),
+                    // Al continuar una partida no hace falta autocargar la cinta (se restaura todo)
+                    options = CoreOptions.forGame(g, app.settings).let { o ->
+                        if (state != null) o + ("fuse_auto_load" to "disabled") else o
+                    },
                     joystickType = g.controls.mode.coreJoystick,
                     stateToLoad = state,
                 )
@@ -195,7 +198,7 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
         engine.setHardwareMask(0)
         engine.setTouchMask(0)
         engine.setPaused(true)
-        engine.tapeCatalog { list -> runOnUiThread { catalog = list } }
+        engine.tapeCatalog { list, side -> runOnUiThread { catalog = list; tapeIndex = side } }
     }
 
     private fun closeMenu() {

@@ -1,0 +1,13 @@
+name: Probar API ZXInfo
+on: workflow_dispatch
+jobs:
+  probar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Consultas
+        run: |
+          set -x
+          curl -s -A "ZXSofa/1.0" "https://api.zxinfo.dk/v3/search?query=jetpac&mode=compact&size=2&offset=0&sort=rel_desc&titlesonly=true&contenttype=SOFTWARE" | head -c 6000; echo
+          curl -s -A "ZXSofa/1.0" "https://api.zxinfo.dk/v3/games/0002596?mode=compact" | head -c 8000; echo
+          curl -s -A "ZXSofa/1.0" -o /dev/null -w "%{http_code} filecheck-desconocido\n" "https://api.zxinfo.dk/v3/filecheck/00000000000000000000000000000000"
+          curl -s -A "ZXSofa/1.0" -o /dev/null -w "%{http_code} media-zxinfo\n" "https://zxinfo.dk/media/zxscreens/0002596/Jetpac-load.png"

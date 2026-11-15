@@ -25,6 +25,8 @@ data class ZxdbEntry(
     val screen: String?,
     /** Instrucciones (TXT, PDF o imágenes). */
     val instructions: List<String> = emptyList(),
+    /** Fichero .pok de ZXDB, si lo hay. */
+    val pok: String? = null,
 )
 
 /** Una portada candidata para mostrar en el buscador. */
@@ -163,8 +165,9 @@ class CoverFinder(private val context: Context) {
         val p = if (path.startsWith("/")) path else "/$path"
         val encoded = p.split("/").joinToString("/") { seg -> URLEncoder.encode(seg, "UTF-8").replace("+", "%20") }
         return listOf(
-            "https://zxinfo.dk/media$encoded",
             "https://spectrumcomputing.co.uk$encoded",
+            "https://zxinfo.dk/media$encoded",
+            "https://worldofspectrum.org$encoded",
         )
     }
 
@@ -274,7 +277,9 @@ class CoverFinder(private val context: Context) {
     suspend fun download(urls: List<String>, dest: File): Boolean = withContext(Dispatchers.IO) {
         for (url in urls) {
             try {
-                val bytes = getBytes(url) ?: continue
+                var bytes = getBytes(url) ?: continue
+                // Pantallas de carga en formato nativo del Spectrum (.scr): las convertimos a PNG
+                if (bytes.size == 6912 || url.lowercase().endsWith(".scr")) bytes = ScrDecoder.toPng(bytes) ?: continue
                 val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                 BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
                 if (opts.outWidth <= 0 || opts.outHeight <= 0) continue

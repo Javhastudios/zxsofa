@@ -63,6 +63,7 @@ fun CoverSearchScreen(vm: LibraryViewModel, gameId: Long) {
         return
     }
     val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
     var query by remember { mutableStateOf(game.title) }
     var loading by remember { mutableStateOf(false) }
     var results by remember { mutableStateOf<List<CoverCandidate>>(emptyList()) }
@@ -81,10 +82,15 @@ fun CoverSearchScreen(vm: LibraryViewModel, gameId: Long) {
         scope.launch {
             loading = true
             val list = mutableListOf<CoverCandidate>()
+            // Índice de ZXDB incluido en la app (sin conexión) y, si responde, la API de ZXInfo
+            val seen = mutableSetOf<String>()
+            com.zxsofa.net.LocalZxdb.search(context, query).forEach { e ->
+                val entry = e.toEntry()
+                if (seen.add(entry.id)) list += vm.repo.finder.candidatesFrom(entry)
+            }
             try {
-                vm.repo.finder.search(query).forEach { list += vm.repo.finder.candidatesFrom(it) }
-            } catch (e: Exception) {
-                vm.message("No se pudo consultar ZXDB")
+                vm.repo.finder.search(query).forEach { if (seen.add(it.id)) list += vm.repo.finder.candidatesFrom(it) }
+            } catch (_: Exception) {
             }
             list += withContext(Dispatchers.Default) { vm.repo.finder.libretroCandidates(query, 8) }
             results = list

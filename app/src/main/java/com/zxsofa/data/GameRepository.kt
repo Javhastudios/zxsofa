@@ -214,13 +214,20 @@ class GameRepository(private val context: Context) {
      * Devuelve un texto con el resultado para mostrarlo al usuario.
      */
     suspend fun autoIdentify(game: Game): String {
-        val byHash = finder.identifyByMd5(game.md5)
+        // 1) Índice de ZXDB incluido en la app: no necesita conexión para los datos
+        val local = try { com.zxsofa.net.LocalZxdb.identify(context, game.fileName, game.title) } catch (e: Exception) { null }
+        if (local != null) {
+            applyEntry(game, local.toEntry(), null, null)
+            return "Identificado: ${local.title}" + (local.year?.let { " ($it)" } ?: "")
+        }
+        // 2) API de ZXInfo (por huella del fichero o por título)
+        val byHash = try { finder.identifyByMd5(game.md5) } catch (e: Exception) { null }
         if (byHash != null) {
             applyEntry(game, byHash, null, null)
             return "Identificado en ZXDB: ${byHash.title}"
         }
         val target = CoverFinder.normalize(game.title)
-        val byTitle = finder.search(game.title).firstOrNull { CoverFinder.normalize(it.title) == target }
+        val byTitle = try { finder.search(game.title) } catch (e: Exception) { emptyList() }.firstOrNull { CoverFinder.normalize(it.title) == target }
         if (byTitle != null) {
             applyEntry(game, byTitle, null, null)
             return "Encontrado por título en ZXDB: ${byTitle.title}"
@@ -258,7 +265,14 @@ class GameRepository(private val context: Context) {
         if (g.docs.isEmpty() && entry.instructions.isNotEmpty()) {
             try { g = downloadInstructions(g, entry) } catch (_: Exception) {}
         }
-        // POKEs de Tipshop, si hay un .pok con el mismo título
+        // POKEs: primero los de ZXDB, si no los de Tipshop
+        if (g.pokPath == null && entry.pok != null) {
+            val dest = File(pokesDir, "${g.id}.pok")
+            if (finder.downloadAny(finder.mediaUrls(entry.pok), dest)) {
+                g = g.copy(pokPath = dest.absolutePath)
+                withContext(Dispatchers.IO) { db.update(g) }
+            }
+        }
         if (g.pokPath == null) {
             try { g = autoPokes(g) ?: g } catch (_: Exception) {}
         }
@@ -354,7 +368,10 @@ class GameRepository(private val context: Context) {
 
     /** Busca instrucciones en ZXDB (identificando el juego si hace falta). Devuelve cuántas se añadieron. */
     suspend fun fetchInstructions(game: Game): Int {
-        val entry = (game.zxdbId?.let { finder.getEntry(it) } ?: finder.identifyByMd5(game.md5)) ?: return -1
+        val entry = game.zxdbId?.let { com.zxsofa.net.LocalZxdb.byId(context, it)?.toEntry() }
+            ?: com.zxsofa.net.LocalZxdb.identify(context, game.fileName, game.title)?.toEntry()
+            ?: try { game.zxdbId?.let { finder.getEntry(it) } ?: finder.identifyByMd5(game.md5) } catch (e: Exception) { null }
+            ?: return -1
         val before = game.docs.size
         val g = downloadInstructions(game, entry)
         refresh()

@@ -29,7 +29,7 @@ class IdentifyTest {
         // Una cinta TAP mínima válida con ese nombre
         val tap = byteArrayOf(19, 0, 0, 0) + "SABREWULF ".toByteArray() + byteArrayOf(1, 0, 10, 0, 1, 0, 0) +
             byteArrayOf(3, 0, -1, 0, -1)
-        val name = "Sabre Wulf (1984)(Ultimate Play The Game) ${System.currentTimeMillis()}.tap"
+        val name = "Sabre Wulf (1984)(Ultimate Play The Game).tap"
         val res = repo.importBytes(name, tap)
         Log.i(TAG, "import=$res")
         val game = when (res) {

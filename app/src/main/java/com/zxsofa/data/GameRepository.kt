@@ -375,6 +375,16 @@ class GameRepository(private val context: Context) {
         return g
     }
 
+    /** Vuelve a poner como portada la carátula completa (por si se recortó un pack apaisado). */
+    suspend fun useFullInlay(game: Game): Game {
+        val full = fullInlay(game) ?: return game
+        val dest = File(coversDir, "${game.id}_${System.currentTimeMillis()}_full.img")
+        withContext(Dispatchers.IO) { full.copyTo(dest, overwrite = true) }
+        val g = replaceImage(game, dest, isCover = true)
+        refresh()
+        return g
+    }
+
     /** Arregla las carátulas desplegadas que ya estaban descargadas. Devuelve cuántas. */
     suspend fun fixWideCovers(): Int {
         var n = 0

@@ -276,17 +276,35 @@ fun ListView(games: List<Game>, identifying: List<Long>, onOpen: (Game) -> Unit,
  */
 @Composable
 fun ShelfView(games: List<Game>, onOpen: (Game) -> Unit) {
+    // Proporción real de cada portada: fundas y packs de pie (verticales), cajas de cartón
+    // españolas (cuadradas) y packs tumbados (apaisados). Se calcula fuera del hilo principal.
+    val aspects by androidx.compose.runtime.produceState(initialValue = emptyMap<Long, Float>(), games) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            games.associate { g -> g.id to (com.zxsofa.net.CoverCrop.aspect(g.coverPath) ?: 0.66f) }
+        }
+    }
     BoxWithConstraints(Modifier.fillMaxSize().background(Color(0xFF3A2412))) {
         val rowHeight = if (maxHeight > 700.dp) 250.dp else 220.dp
         val boxHeight = rowHeight * 0.66f
-        val boxWidth = boxHeight * 0.66f              // proporción de una caja de cassette
-        val minGap = 18.dp
-        val perRow = ((maxWidth - minGap) / (boxWidth + minGap)).toInt().coerceAtLeast(1)
-        // Reparto del sobrante para que las filas llenas ocupen todo el ancho
-        val gap = ((maxWidth - boxWidth * perRow) / (perRow + 1)).coerceAtLeast(8.dp)
-        val rows = remember(games, perRow) { games.chunked(perRow) }
+        val gap = 16.dp
+        val usable = maxWidth - gap
+        fun widthOf(g: Game) = boxHeight * (aspects[g.id] ?: 0.66f).coerceIn(0.5f, 1.8f)
+        // Reparto en baldas según el ancho real de cada caja
+        val rows = remember(games, aspects, maxWidth) {
+            val out = mutableListOf<MutableList<Game>>()
+            var cur = mutableListOf<Game>()
+            var used = 0.dp
+            for (g in games) {
+                val w = widthOf(g) + gap
+                if (cur.isNotEmpty() && used + w > usable) { out += cur; cur = mutableListOf(); used = 0.dp }
+                cur += g
+                used += w
+            }
+            if (cur.isNotEmpty()) out += cur
+            out
+        }
         // Siempre al menos tres baldas, aunque haya pocos juegos, para que parezca una estantería
-        val shelves = rows + List((3 - rows.size).coerceAtLeast(0)) { emptyList<Game>() }
+        val shelves: List<List<Game>> = rows + List((3 - rows.size).coerceAtLeast(0)) { emptyList() }
 
         LazyColumn(Modifier.fillMaxSize()) {
             items(shelves.size) { r ->
@@ -299,10 +317,10 @@ fun ShelfView(games: List<Game>, onOpen: (Game) -> Unit) {
                     )
                     Row(
                         Modifier.fillMaxSize().padding(horizontal = gap),
-                        horizontalArrangement = Arrangement.spacedBy(gap),
+                        horizontalArrangement = Arrangement.spacedBy(gap, Alignment.CenterHorizontally),
                     ) {
                         shelves[r].forEach { g ->
-                            ShelfItem(g, boxWidth, boxHeight, rowHeight, onClick = { onOpen(g) })
+                            ShelfItem(g, widthOf(g), boxHeight, rowHeight, onClick = { onOpen(g) })
                         }
                     }
                 }
@@ -345,8 +363,10 @@ private fun ShelfItem(game: Game, boxWidth: androidx.compose.ui.unit.Dp, boxHeig
                         Brush.linearGradient(listOf(Color(0x33FFFFFF), Color.Transparent, Color(0x22000000)))
                     )
                 )
-                // Bisagra de la caja a la izquierda
-                Box(Modifier.width(4.dp).fillMaxHeight().background(Color(0x55000000)))
+                // Bisagra a la izquierda, solo en las cajas de cassette (las verticales)
+                if (boxWidth < boxHeight * 0.8f) {
+                    Box(Modifier.width(4.dp).fillMaxHeight().background(Color(0x55000000)))
+                }
             }
         }
         // Etiqueta en el canto de la balda

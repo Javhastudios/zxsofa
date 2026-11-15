@@ -12,12 +12,25 @@ import java.io.File
  */
 object CoverCrop {
     const val RATIO = 0.64f          // ancho / alto de la portada de una caja de cassette
-    const val WIDE = 1.15f           // a partir de aquí consideramos que la imagen está desplegada
+    // A partir de aquí consideramos que es un inlay de cassette abierto (portada + lomo + solapas).
+    // Las cajas de cartón (cuadradas) y los packs apaisados quedan por debajo y no se tocan.
+    const val WIDE = 1.5f
 
     fun size(file: File): Pair<Int, Int>? {
         val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(file.absolutePath, o)
         return if (o.outWidth > 0 && o.outHeight > 0) o.outWidth to o.outHeight else null
+    }
+
+    /** Proporción ancho / alto de una imagen (con caché), para dibujar cada caja con su forma real. */
+    private val aspects = java.util.concurrent.ConcurrentHashMap<String, Float>()
+
+    fun aspect(path: String?): Float? {
+        if (path == null) return null
+        aspects[path]?.let { return it }
+        val r = size(File(path))?.let { (w, h) -> w.toFloat() / h } ?: return null
+        aspects[path] = r
+        return r
     }
 
     fun isWide(file: File): Boolean = size(file)?.let { (w, h) -> w.toFloat() / h > WIDE } ?: false

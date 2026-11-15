@@ -205,10 +205,15 @@ private fun DocsAndPokes(vm: LibraryViewModel, game: Game) {
     val fullInlay = remember(game.docs) { vm.repo.fullInlay(game) }
     var cropping by remember { mutableStateOf(false) }
     if (fullInlay != null) {
-        OutlinedButton(onClick = { cropping = true }, modifier = Modifier.padding(top = 8.dp)) { Text("Ajustar recorte de la carátula") }
+        OutlinedButton(onClick = { cropping = true }, modifier = Modifier.padding(top = 8.dp)) { Text("Ajustar o quitar el recorte de la carátula") }
     }
     if (cropping && fullInlay != null) {
-        CropDialog(fullInlay, onDismiss = { cropping = false }, onSave = { pos -> cropping = false; vm.recropCover(game, pos) })
+        CropDialog(
+            fullInlay,
+            onDismiss = { cropping = false },
+            onSave = { pos -> cropping = false; vm.recropCover(game, pos) },
+            onUseFull = { cropping = false; vm.useFullInlay(game) },
+        )
     }
 
     SectionTitle("Instrucciones y documentos")
@@ -264,7 +269,7 @@ private fun DocsAndPokes(vm: LibraryViewModel, game: Game) {
 
 /** Elegir qué parte del inlay desplegado es la portada. */
 @Composable
-private fun CropDialog(full: File, onDismiss: () -> Unit, onSave: (Float) -> Unit) {
+private fun CropDialog(full: File, onDismiss: () -> Unit, onSave: (Float) -> Unit, onUseFull: () -> Unit) {
     val bmp = remember(full) {
         val o = android.graphics.BitmapFactory.Options().apply { inSampleSize = 2 }
         android.graphics.BitmapFactory.decodeFile(full.absolutePath, o)
@@ -297,6 +302,7 @@ private fun CropDialog(full: File, onDismiss: () -> Unit, onSave: (Float) -> Uni
                 }
                 Text("Mueve el recuadro hasta la portada:", Modifier.padding(top = 10.dp))
                 Slider(value = pos, onValueChange = { pos = it })
+                TextButton(onClick = onUseFull) { Text("No recortar: usar la carátula completa (packs, cajas…)") }
             }
         },
         confirmButton = { TextButton(onClick = { onSave(pos) }) { Text("Guardar") } },

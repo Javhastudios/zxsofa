@@ -41,11 +41,11 @@ class ScreenshotTest {
         }
         val shots = listOf<Pair<String, Boolean>>()
         // Carrusel en vertical: dos capturas separadas para ver que el destacado rota
-        Settings(ctx).catalogView = "CAROUSEL"
+        Settings(ctx).catalogView = "SHELF"
         inst.uiAutomation.setRotation(android.app.UiAutomation.ROTATION_FREEZE_0)
         ActivityScenario.launch(MainActivity::class.java).use {
-            for (n in 1..2) {
-                Thread.sleep(if (n == 1) 3000 else 7000)
+            for (n in 1..1) {
+                Thread.sleep(4000)
                 val bmp = inst.uiAutomation.takeScreenshot()
                 val small = Bitmap.createScaledBitmap(bmp, bmp.width * 2 / 5, bmp.height * 2 / 5, true)
                 val out = ByteArrayOutputStream()

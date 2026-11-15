@@ -217,6 +217,11 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         _messages.tryEmit("Recorte guardado")
     }
 
+    fun useFullInlay(game: Game) = viewModelScope.launch {
+        repo.useFullInlay(game)
+        _messages.tryEmit("Portada: carátula completa")
+    }
+
     fun fixWideCovers() = viewModelScope.launch {
         busy = true
         val n = try { repo.fixWideCovers() } catch (e: Exception) { 0 }

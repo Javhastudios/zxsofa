@@ -77,7 +77,8 @@ fun SettingsScreen(vm: LibraryViewModel) {
 
             SectionTitle("Carátulas")
             Text(
-                "Algunas carátulas de ZXDB son el inlay entero desplegado. Este botón deja solo la portada (y guarda el inlay completo en los documentos de cada juego).",
+                "Algunas carátulas de ZXDB son el inlay de cassette entero desplegado. Este botón deja solo la portada en las que son claramente un inlay abierto " +
+                    "(mucho más anchas que altas); las cajas cuadradas y los packs apaisados no se tocan. El inlay completo se guarda en los documentos de cada juego.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             OutlinedButton(onClick = { vm.fixWideCovers() }, modifier = Modifier.padding(top = 6.dp)) { Text("Arreglar carátulas desplegadas") }

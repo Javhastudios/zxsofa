@@ -3,6 +3,7 @@ package com.zxsofa.ui
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -57,8 +58,10 @@ fun CatalogScreen(vm: LibraryViewModel, onAddFile: () -> Unit, onOpen: (Game) ->
     val all by vm.games.collectAsState()
     val games = vm.visibleGames(all)
 
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+    val wide = maxWidth >= 600.dp
     Column(Modifier.fillMaxSize()) {
-        AppHeader("ZX Sofá") {
+        val actions: @Composable () -> Unit = {
             ViewModeButton(vm.viewMode) { vm.changeViewMode(it) }
             val ctx = LocalContext.current
             IconButton(onClick = { ctx.startActivity(MagazineActivity.intent(ctx)) }) {
@@ -68,6 +71,31 @@ fun CatalogScreen(vm: LibraryViewModel, onAddFile: () -> Unit, onOpen: (Game) ->
             IconButton(onClick = { vm.navigate(Screen.WifiImport) }) { Icon(Icons.Default.Wifi, "Añadir desde otro dispositivo") }
             IconButton(onClick = { vm.navigate(Screen.Settings) }) { Icon(Icons.Default.Settings, "Ajustes") }
         }
+        val search: @Composable (Modifier) -> Unit = { m ->
+            OutlinedTextField(
+                value = vm.query,
+                onValueChange = { vm.query = it },
+                singleLine = true,
+                leadingIcon = { Icon(Icons.Default.Search, null) },
+                placeholder = { Text("Buscar en mi colección") },
+                modifier = m,
+            )
+        }
+        if (wide && all.isNotEmpty()) {
+            // Pantallas anchas (horizontal, tablet, tele): título, buscador e iconos en una sola línea
+            Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column {
+                    Text("ZX Sofá", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    RainbowStripes(Modifier.padding(top = 4.dp), stripe = 4.dp)
+                }
+                Spacer(Modifier.width(20.dp))
+                search(Modifier.weight(1f))
+                Spacer(Modifier.width(8.dp))
+                actions()
+            }
+        } else {
+            AppHeader("ZX Sofá") { actions() }
+        }
         if (vm.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
 
         if (all.isEmpty()) {
@@ -75,14 +103,7 @@ fun CatalogScreen(vm: LibraryViewModel, onAddFile: () -> Unit, onOpen: (Game) ->
             return@Column
         }
 
-        OutlinedTextField(
-            value = vm.query,
-            onValueChange = { vm.query = it },
-            singleLine = true,
-            leadingIcon = { Icon(Icons.Default.Search, null) },
-            placeholder = { Text("Buscar en mi colección") },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-        )
+        if (!wide) search(Modifier.fillMaxWidth().padding(horizontal = 16.dp))
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -115,6 +136,7 @@ fun CatalogScreen(vm: LibraryViewModel, onAddFile: () -> Unit, onOpen: (Game) ->
             ViewMode.LIST -> ListView(games, vm.identifying, onOpen, onPlay)
             ViewMode.SHELF -> ShelfView(games, onOpen)
         }
+    }
     }
 }
 

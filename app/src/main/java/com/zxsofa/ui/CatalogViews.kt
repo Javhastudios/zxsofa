@@ -103,8 +103,10 @@ fun CarouselView(games: List<Game>, onOpen: (Game) -> Unit, onPlay: (Game) -> Un
     val rows = remember(games) { carouselRows(games) }
     val hero = focused?.let { f -> games.firstOrNull { it.id == f.id } } ?: games.firstOrNull()
 
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+    val heroHeight = if (maxHeight < 420.dp) 0.dp else if (maxHeight < 600.dp) 120.dp else 170.dp
     Column(Modifier.fillMaxSize()) {
-        if (hero != null) CarouselHero(hero)
+        if (hero != null && heroHeight > 0.dp) CarouselHero(hero, heroHeight)
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
             items(rows, key = { it.first }) { (title, list) ->
                 Text(
@@ -124,11 +126,12 @@ fun CarouselView(games: List<Game>, onOpen: (Game) -> Unit, onPlay: (Game) -> Un
             }
         }
     }
+    }
 }
 
 @Composable
-private fun CarouselHero(game: Game) {
-    Box(Modifier.fillMaxWidth().height(170.dp)) {
+private fun CarouselHero(game: Game, height: androidx.compose.ui.unit.Dp) {
+    Box(Modifier.fillMaxWidth().height(height)) {
         // Fondo: la pantalla de carga (o la portada) difuminada en oscuro
         GameCover(
             game.title,
@@ -247,8 +250,10 @@ fun ShelfView(games: List<Game>, onOpen: (Game) -> Unit) {
         val rowHeight = if (maxHeight > 700.dp) 250.dp else 220.dp
         val boxHeight = rowHeight * 0.66f
         val boxWidth = boxHeight * 0.66f              // proporción de una caja de cassette
-        val gap = 18.dp
-        val perRow = ((maxWidth - gap) / (boxWidth + gap)).toInt().coerceAtLeast(1)
+        val minGap = 18.dp
+        val perRow = ((maxWidth - minGap) / (boxWidth + minGap)).toInt().coerceAtLeast(1)
+        // Reparto del sobrante para que las filas llenas ocupen todo el ancho
+        val gap = ((maxWidth - boxWidth * perRow) / (perRow + 1)).coerceAtLeast(8.dp)
         val rows = remember(games, perRow) { games.chunked(perRow) }
         // Siempre al menos tres baldas, aunque haya pocos juegos, para que parezca una estantería
         val shelves = rows + List((3 - rows.size).coerceAtLeast(0)) { emptyList<Game>() }

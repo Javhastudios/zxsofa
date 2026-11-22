@@ -268,11 +268,11 @@ class GlScreen {
         /** Mide el tiempo de pintado (solo para pruebas). */
         @JvmStatic @Volatile var measure = false
 
-        // Hueco del tubo dentro de tv_frame.jpg (1600x1100), generado por tools/make_tv_frame.py
-        private const val HOLE_X = 114f / 1600f
-        private const val HOLE_Y = 110f / 1100f
-        private const val HOLE_W = 1067f / 1600f
-        private const val HOLE_H = 800f / 1100f
+        // Hueco del tubo dentro de tv_frame.jpg (1471x984, foto del usuario con el cristal oscurecido)
+        private const val HOLE_X = 126f / 1471f
+        private const val HOLE_Y = 124f / 984f
+        private const val HOLE_W = 953f / 1471f
+        private const val HOLE_H = 715f / 984f
 
         private const val PLAIN = """
 precision mediump float;

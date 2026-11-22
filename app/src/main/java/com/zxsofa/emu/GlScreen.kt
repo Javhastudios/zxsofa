@@ -269,10 +269,10 @@ class GlScreen {
         @JvmStatic @Volatile var measure = false
 
         // Hueco del tubo dentro de tv_frame.jpg (1471x984, foto del usuario con el cristal oscurecido)
-        private const val HOLE_X = 92f / 1471f    // un poco mayor que el cristal: la curvatura
-        private const val HOLE_Y = 91f / 984f     // encoge la imagen y así llega casi al borde
-        private const val HOLE_W = 1021f / 1471f
-        private const val HOLE_H = 780f / 984f
+        private const val HOLE_X = 126f / 1471f
+        private const val HOLE_Y = 124f / 984f
+        private const val HOLE_W = 953f / 1471f
+        private const val HOLE_H = 715f / 984f
 
         private const val PLAIN = """
 precision mediump float;
@@ -337,10 +337,9 @@ vec3 mask(float amount) {
 // Brillo: una sola lectura lineal desplazada media celda promedia 2x2 píxeles
 vec3 glow(vec2 uv) { return texture2D(uTex, uv + 0.75 / uTexSize).rgb; }
 
-float frame(vec2 uv) {
+float frame(vec2 uv, float amount) {
     vec2 v = uv * (1.0 - uv);
-    float vig = clamp(v.x * v.y * 40.0, 0.0, 1.0);
-    vig = sqrt(vig);
+    float vig = mix(1.0, sqrt(clamp(v.x * v.y * 40.0, 0.0, 1.0)), amount);
     vec2 d = max(abs(uv - 0.5) * 2.0 - 0.94, 0.0) / 0.06;
     return vig * (1.0 - smoothstep(0.85, 1.0, length(d)));
 }
@@ -370,13 +369,13 @@ void main() {
         col += glow(uv) * 0.15;
         float noise = fract(sin(dot(gl_FragCoord.xy + uTime * 61.0, vec2(12.9898, 78.233))) * 43758.5453);
         col += (noise - 0.5) * 0.035;
-        col *= (0.985 + 0.015 * sin(uTime * 50.0)) * (1.0 + 0.35 * s) * frame(uv);
+        col *= (0.985 + 0.015 * sin(uTime * 50.0)) * (1.0 + 0.35 * s) * frame(uv, 0.4);
     } else {
         uv = curve(uv, 0.45);
         if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
         float lum = dot(line(uv) * 0.85 + glow(uv) * 0.25, vec3(0.3, 0.59, 0.11));
         vec3 tint = uMode < 3.5 ? vec3(0.25, 1.0, 0.35) : vec3(1.0, 0.68, 0.12);
-        col = tint * (lum * scan(uv, vec3(lum), 0.6 * s) * (1.0 + 0.4 * s) + 0.03) * frame(uv);
+        col = tint * (lum * scan(uv, vec3(lum), 0.6 * s) * (1.0 + 0.4 * s) + 0.03) * frame(uv, 1.0);
     }
     gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
 }

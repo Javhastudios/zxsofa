@@ -145,6 +145,7 @@ class GlScreen {
     /** Pinta [bmp] en [surface] de [outW]x[outH] píxeles. */
     fun draw(surface: Surface, outW: Int, outH: Int, bmp: Bitmap, effect: ScreenEffect, strength: Float, smooth: Boolean, frame: Bitmap? = null): Boolean {
         val t0 = System.nanoTime()
+        if (effect != lastLogged) { lastLogged = effect; Log.i("ZXSofa", "GL: efecto ${effect.name}, marco=${frame != null}, salida ${outW}x$outH, imagen ${bmp.width}x${bmp.height}") }
         if (outW <= 0 || outH <= 0 || !bind(surface)) return false
         if (program == 0) setup()
 
@@ -214,6 +215,7 @@ class GlScreen {
         return true
     }
     private var frames = 0
+    private var lastLogged: ScreenEffect? = null
     private var frameNs = 0L
 
     private fun drawFrame(frame: Bitmap, x: Int, y: Int, w: Int, h: Int) {

@@ -29,7 +29,7 @@ class ScreenshotTest {
             ActivityScenario.launch<com.zxsofa.ui.EmulatorActivity>(
                 com.zxsofa.ui.EmulatorActivity.freeIntent(ctx, com.zxsofa.data.Machine.SPEC128, false)
             ).use {
-                Thread.sleep(7000)
+                Thread.sleep(10000)
                 val bmp = inst.uiAutomation.takeScreenshot()
                 val small = Bitmap.createScaledBitmap(bmp, bmp.width * 3 / 5, bmp.height * 3 / 5, true)
                 val out = ByteArrayOutputStream()

@@ -26,6 +26,7 @@ jobs:
           profile: pixel_6
           script: |
             chmod +x gradlew
+            adb logcat -G 16M || true
             adb logcat -c
             ./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.zxsofa.ScreenshotTest || true
             adb logcat -d -s ZXSofaTest:V ZXSofa:V AndroidRuntime:E TestRunner:V | tail -80

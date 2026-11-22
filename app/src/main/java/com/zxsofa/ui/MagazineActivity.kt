@@ -236,7 +236,7 @@ private fun MagazineLibrary(repo: GameRepository, onOpen: (Magazine) -> Unit, on
         AlertDialog(
             onDismissRequest = { editing = null },
             title = { Text("Revista") },
-            text = { OutlinedTextField(name, { name = it }, label = { Text("Nombre") }, singleLine = true) },
+            text = { OutlinedTextField(name, { name = it }, label = { Text("Nombre") }, singleLine = true, modifier = Modifier.tvEscape()) },
             confirmButton = {
                 TextButton(onClick = {
                     scope.launch { repo.updateMagazine(m.copy(title = name.trim().ifBlank { m.title })) }

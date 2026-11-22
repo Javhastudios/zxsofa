@@ -68,13 +68,13 @@ fun EditScreen(vm: LibraryViewModel, gameId: Long) {
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).widthIn(max = 720.dp),
         ) {
             SectionTitle("Datos")
-            OutlinedTextField(title, { title = it }, label = { Text("Título") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(title, { title = it }, label = { Text("Título") }, singleLine = true, modifier = Modifier.fillMaxWidth().tvEscape())
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(year, { year = it }, label = { Text("Año") }, singleLine = true, modifier = Modifier.weight(1f))
-                OutlinedTextField(publisher, { publisher = it }, label = { Text("Compañía") }, singleLine = true, modifier = Modifier.weight(2f))
+                OutlinedTextField(year, { year = it }, label = { Text("Año") }, singleLine = true, modifier = Modifier.weight(1f).tvEscape())
+                OutlinedTextField(publisher, { publisher = it }, label = { Text("Compañía") }, singleLine = true, modifier = Modifier.weight(2f).tvEscape())
             }
-            OutlinedTextField(genre, { genre = it }, label = { Text("Género") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(notes, { notes = it }, label = { Text("Notas (teclas, trucos…)") }, minLines = 2, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(genre, { genre = it }, label = { Text("Género") }, singleLine = true, modifier = Modifier.fillMaxWidth().tvEscape())
+            OutlinedTextField(notes, { notes = it }, label = { Text("Notas (teclas, trucos…)") }, minLines = 2, modifier = Modifier.fillMaxWidth().tvEscape(multiLine = true))
 
             SectionTitle("Cintas y caras")
             game.allFiles.forEachIndexed { i, path ->

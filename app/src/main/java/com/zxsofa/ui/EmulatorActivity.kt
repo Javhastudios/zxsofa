@@ -722,7 +722,7 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
                             value = value,
                             onValueChange = { v -> value = v.filter { it.isDigit() }.take(3) },
                             singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().tvEscape(),
                         )
                         Button(onClick = {
                             togglePoke(p, (value.toIntOrNull() ?: 0).coerceIn(0, 255))
@@ -773,7 +773,7 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
                     if (askProgramName) {
                         var name by remember { mutableStateOf("") }
                         Text("Nombre del programa:", Modifier.padding(top = 4.dp))
-                        OutlinedTextField(value = name, onValueChange = { name = it.take(40) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(value = name, onValueChange = { name = it.take(40) }, singleLine = true, modifier = Modifier.fillMaxWidth().tvEscape())
                         Button(onClick = { saveProgram(name) }, Modifier.fillMaxWidth()) { Text("Guardar en la colección") }
                     } else {
                         FilledTonalButton(onClick = { askProgramName = true }, Modifier.fillMaxWidth()) { Text("Guardar programa en la colección") }

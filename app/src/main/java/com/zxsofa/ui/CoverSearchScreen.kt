@@ -117,7 +117,7 @@ fun CoverSearchScreen(vm: LibraryViewModel, gameId: Long) {
                 label = { Text("Título") },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { search() }),
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).tvEscape({ query.isEmpty() }),
             )
             Button(onClick = { search() }) { Icon(Icons.Default.Search, "Buscar") }
         }

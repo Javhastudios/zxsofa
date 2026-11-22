@@ -83,6 +83,7 @@ fun CatalogScreen(vm: LibraryViewModel, onAddFile: () -> Unit, onOpen: (Game) ->
             IconButton(onClick = { vm.navigate(Screen.WifiImport) }) { Icon(Icons.Default.Wifi, "Añadir desde otro dispositivo") }
             IconButton(onClick = { vm.navigate(Screen.Settings) }) { Icon(Icons.Default.Settings, "Ajustes") }
         }
+        val searchFm = androidx.compose.ui.platform.LocalFocusManager.current
         val search: @Composable (Modifier) -> Unit = { m ->
             OutlinedTextField(
                 value = vm.query,
@@ -90,7 +91,9 @@ fun CatalogScreen(vm: LibraryViewModel, onAddFile: () -> Unit, onOpen: (Game) ->
                 singleLine = true,
                 leadingIcon = { Icon(Icons.Default.Search, null) },
                 placeholder = { Text("Buscar en mi colección") },
-                modifier = m,
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { searchFm.moveFocus(androidx.compose.ui.focus.FocusDirection.Down) }),
+                modifier = m.tvEscape({ vm.query.isEmpty() }),
             )
         }
         if (wide && all.isNotEmpty()) {

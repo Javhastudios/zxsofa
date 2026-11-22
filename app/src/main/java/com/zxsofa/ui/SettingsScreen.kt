@@ -195,7 +195,7 @@ private fun BackupSection(vm: LibraryViewModel) {
                 onValueChange = { manual = it },
                 singleLine = true,
                 placeholder = { Text("192.168.1.40:8080") },
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).tvEscape({ manual.isEmpty() }),
             )
             Button(onClick = { vm.sendCollection(manual) }, enabled = manual.isNotBlank() && progress == null) { Text("Enviar") }
         }

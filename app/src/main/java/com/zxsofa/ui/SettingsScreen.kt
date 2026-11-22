@@ -52,6 +52,8 @@ fun SettingsScreen(vm: LibraryViewModel) {
     val s = vm.settings
     var border by remember { mutableStateOf(s.border) }
     var smoothing by remember { mutableStateOf(s.smoothing) }
+    var effect by remember { mutableStateOf(s.screenEffect) }
+    var strength by remember { mutableFloatStateOf(s.effectStrength) }
     var touch by remember { mutableStateOf(s.touchMode) }
     var opacity by remember { mutableFloatStateOf(s.controlsOpacity) }
     var fastLoad by remember { mutableStateOf(s.fastLoad) }
@@ -65,7 +67,15 @@ fun SettingsScreen(vm: LibraryViewModel) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).widthIn(max = 720.dp)) {
             SectionTitle("Imagen")
             SelectorRow("Borde de pantalla", border, BorderSize.entries, { it.label }, { border = it; s.border = it })
-            SwitchRow("Suavizado (píxeles menos nítidos)", smoothing) { smoothing = it; s.smoothing = it }
+            SelectorRow("Efecto de pantalla", effect, com.zxsofa.emu.ScreenEffect.entries, { it.label }, { effect = it; s.screenEffect = it })
+            if (effect != com.zxsofa.emu.ScreenEffect.SHARP) {
+                Text("Intensidad de líneas y rejilla: ${(strength * 100).toInt()} %", Modifier.padding(top = 8.dp))
+                Slider(value = strength, onValueChange = { strength = it }, onValueChangeFinished = { s.effectStrength = strength }, valueRange = 0f..1f)
+            } else {
+                SwitchRow("Suavizado (píxeles menos nítidos)", smoothing) { smoothing = it; s.smoothing = it }
+            }
+            Text("También se cambia durante la partida desde el menú de pausa.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
             SectionTitle("Controles táctiles")
             SelectorRow("Mostrar controles táctiles", touch, TouchMode.entries, { it.label }, { touch = it; s.touchMode = it })

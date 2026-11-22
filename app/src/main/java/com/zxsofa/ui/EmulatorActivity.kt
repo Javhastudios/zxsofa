@@ -50,6 +50,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -103,6 +104,7 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
     private var usingGamepad by mutableStateOf(false)
     private var touchHidden by mutableStateOf(false)
     private var joyMode by mutableStateOf(JoyMode.KEMPSTON)
+    private var screenEffect by mutableStateOf(com.zxsofa.emu.ScreenEffect.SHARP)
     private var tapeIndex by mutableStateOf(0)
     /** Modelo cuando se enciende el Spectrum sin juego (null = jugando a un juego). */
     private var freeMachine by mutableStateOf<com.zxsofa.data.Machine?>(null)
@@ -137,6 +139,9 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
 
         engine = EmulatorEngine(File(filesDir, "system").apply { mkdirs() }, this)
         engine.smoothing = app.settings.smoothing
+        engine.effect = app.settings.screenEffect
+        screenEffect = engine.effect
+        engine.effectStrength = app.settings.effectStrength
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -395,6 +400,15 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
             ins != null -> { val u = ins.copy(controls = controls); insertedGame = u; lifecycleScope.launch { app.repository.update(u) } }
             else -> freeControls = controls
         }
+    }
+
+    private fun cycleEffect() {
+        val all = com.zxsofa.emu.ScreenEffect.entries
+        val next = all[(screenEffect.ordinal + 1) % all.size]
+        screenEffect = next
+        engine.effect = next
+        app.settings.screenEffect = next
+        engine.redraw()
     }
 
     private fun cycleJoystick() {
@@ -784,6 +798,7 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
                     if (hasTouch && !usingGamepad) keyboardOpen = true else engine.pulse(Pad.SELECT)
                 }, Modifier.fillMaxWidth()) { Text("Teclado del Spectrum") }
                 FilledTonalButton(onClick = { cycleJoystick() }, Modifier.fillMaxWidth()) { Text("Joystick: ${joyMode.label}") }
+                FilledTonalButton(onClick = { cycleEffect() }, Modifier.fillMaxWidth().testTag("effect")) { Text("Pantalla: ${screenEffect.label}") }
                 if (joyMode == JoyMode.KEYS) {
                     FilledTonalButton(onClick = { showKeys = true }, Modifier.fillMaxWidth()) { Text("Elegir las teclas") }
                 }

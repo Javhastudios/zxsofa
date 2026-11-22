@@ -48,6 +48,8 @@ class EmulatorEngine(
     @Volatile var paused = false
         private set
     @Volatile var smoothing = false
+    @Volatile var effect = ScreenEffect.SHARP
+    @Volatile var effectStrength = 0.7f
     @Volatile private var running = false
 
     private var thread: Thread? = null
@@ -58,6 +60,10 @@ class EmulatorEngine(
     private var bitmap: Bitmap? = null
     private val paint = Paint()
     private val dst = Rect()
+    private var gl: GlScreen? = null
+    private var glTried = false
+    private var surfaceW = 0
+    private var surfaceH = 0
 
     // Entrada: se combinan táctil, mando y pulsaciones automáticas
     @Volatile private var touchMask = 0
@@ -200,14 +206,24 @@ class EmulatorEngine(
     }
 
     override fun surfaceChanged(h: SurfaceHolder, format: Int, width: Int, height: Int) {
-        synchronized(surfaceLock) { holder = h }
+        synchronized(surfaceLock) { holder = h; surfaceW = width; surfaceH = height }
         post { draw() } // repinta aunque esté en pausa
     }
 
     override fun surfaceDestroyed(h: SurfaceHolder) {
         // Solo si es la superficie actual (al rotar puede crearse la nueva antes de destruir la vieja)
         synchronized(surfaceLock) { if (holder === h) holder = null }
+        // OpenGL tiene que soltar la ventana antes de que Android la destruya
+        val t = thread
+        if (gl != null && t != null && t.isAlive && Thread.currentThread() !== t) {
+            val done = java.util.concurrent.CountDownLatch(1)
+            post { gl?.releaseSurface(); done.countDown() }
+            done.await(600, java.util.concurrent.TimeUnit.MILLISECONDS)
+        }
     }
+
+    /** Repinta (p. ej. tras cambiar el efecto estando en pausa). */
+    fun redraw() = post { draw() }
 
     // ---------------------------------------------------------------- bucle
 
@@ -288,6 +304,8 @@ class EmulatorEngine(
             } catch (_: Exception) {
             }
             track?.release()
+            try { gl?.release() } catch (_: Throwable) {}
+            gl = null
             NativeCore.nativeReleaseAll()
             NativeCore.nativeUnload()
             running = false
@@ -329,6 +347,26 @@ class EmulatorEngine(
             bitmap = bmp
         }
         if (!NativeCore.nativeCopyFrame(bmp)) return
+
+        if (!glTried) {
+            glTried = true
+            gl = GlScreen().takeIf { it.init() }
+        }
+        val g = gl
+        if (g != null) {
+            synchronized(surfaceLock) {
+                val hld = holder ?: return
+                try {
+                    g.draw(hld.surface, surfaceW, surfaceH, bmp, effect, effectStrength, smoothing)
+                } catch (e: Throwable) {
+                    // Si el shader falla en este aparato, volvemos al pintado clásico
+                    Log.w(TAG, "Fallo OpenGL, uso el pintado normal", e)
+                    try { g.release() } catch (_: Throwable) {}
+                    gl = null
+                }
+            }
+            return
+        }
 
         synchronized(surfaceLock) {
             val hld = holder ?: return

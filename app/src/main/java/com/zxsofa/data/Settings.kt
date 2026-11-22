@@ -25,6 +25,15 @@ class Settings(context: Context) {
         get() = prefs.getBoolean("smoothing", false)
         set(v) = prefs.edit().putBoolean("smoothing", v).apply()
 
+    var screenEffect: com.zxsofa.emu.ScreenEffect
+        get() = enumOr(prefs.getString("effect", null), com.zxsofa.emu.ScreenEffect.SHARP)
+        set(v) = prefs.edit().putString("effect", v.name).apply()
+
+    /** Intensidad de líneas y rejilla (0–1). */
+    var effectStrength: Float
+        get() = prefs.getFloat("effectStrength", 0.7f)
+        set(v) = prefs.edit().putFloat("effectStrength", v).apply()
+
     var touchMode: TouchMode
         get() = enumOr(prefs.getString("touch", null), TouchMode.AUTO)
         set(v) = prefs.edit().putString("touch", v.name).apply()

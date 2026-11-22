@@ -18,69 +18,24 @@ import java.io.ByteArrayOutputStream
 @RunWith(AndroidJUnit4::class)
 class ScreenshotTest {
     @Test
-    fun capturasDelCatalogo() {
+    fun capturasDeEfectos() {
         val inst = InstrumentationRegistry.getInstrumentation()
         val ctx = inst.targetContext
-        val app = ctx.applicationContext as ZXSofaApp
-        val repo: GameRepository = app.repository
-        runBlocking {
-            val names = listOf(
-                "Sabre Wulf (1984)(Ultimate Play The Game)", "Knight Lore (1984)(Ultimate Play The Game)",
-                "Manic Miner (1983)(Bug-Byte)", "Jet Set Willy (1984)(Software Projects)",
-                "Head over Heels (1987)(Ocean)", "Atic Atac (1983)(Ultimate Play The Game)",
-                "Jetpac (1983)(Ultimate Play The Game)", "La Abadia del Crimen (1988)(Opera Soft)",
-                "Army Moves (1987)(Dinamic)", "Batman - The Caped Crusader (1988)(Ocean)",
-            )
-            names.forEachIndexed { i, n ->
-                val tap = byteArrayOf(19, 0, 0, 0) + "GAME$i     ".take(10).toByteArray() + byteArrayOf(1, 0, 10, 0, 1, 0, 0) +
-                    byteArrayOf(3, 0, -1, i.toByte(), (-1 xor i).toByte())
-                val r = repo.importBytes("$n.tap", tap)
-                if (r is GameRepository.ImportResult.Added) repo.autoIdentify(r.game)
-            }
-            repo.refresh()
-        }
-        val shots = listOf<Pair<String, Boolean>>()
-        // Carrusel en vertical: dos capturas separadas para ver que el destacado rota
-        Settings(ctx).catalogView = "SHELF"
-        inst.uiAutomation.setRotation(android.app.UiAutomation.ROTATION_FREEZE_0)
-        ActivityScenario.launch(MainActivity::class.java).use {
-            for (n in 1..1) {
-                Thread.sleep(4000)
+        inst.uiAutomation.setRotation(android.app.UiAutomation.ROTATION_FREEZE_90)
+        Thread.sleep(1500)
+        for (fx in com.zxsofa.emu.ScreenEffect.entries) {
+            Settings(ctx).screenEffect = fx
+            Settings(ctx).touchMode = com.zxsofa.data.TouchMode.NEVER
+            ActivityScenario.launch<com.zxsofa.ui.EmulatorActivity>(
+                com.zxsofa.ui.EmulatorActivity.freeIntent(ctx, com.zxsofa.data.Machine.SPEC128, false)
+            ).use {
+                Thread.sleep(7000)
                 val bmp = inst.uiAutomation.takeScreenshot()
-                val small = Bitmap.createScaledBitmap(bmp, bmp.width * 2 / 5, bmp.height * 2 / 5, true)
+                val small = Bitmap.createScaledBitmap(bmp, bmp.width * 3 / 5, bmp.height * 3 / 5, true)
                 val out = ByteArrayOutputStream()
-                small.compress(Bitmap.CompressFormat.JPEG, 70, out)
-                Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP).chunked(3000).forEachIndexed { i, c -> Log.i("ZXSofaShot", "ROT${n}V|$i|$c") }
+                small.compress(Bitmap.CompressFormat.JPEG, 85, out)
+                Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP).chunked(3000).forEachIndexed { i, c -> Log.i("ZXSofaShot", "${fx.name}|$i|$c") }
             }
-        }
-        for ((mode, landscape) in shots) {
-            Settings(ctx).catalogView = mode
-            inst.uiAutomation.setRotation(if (landscape) android.app.UiAutomation.ROTATION_FREEZE_90 else android.app.UiAutomation.ROTATION_FREEZE_0)
-            Thread.sleep(1500)
-            ActivityScenario.launch(MainActivity::class.java).use {
-                Thread.sleep(5000)
-                val bmp = inst.uiAutomation.takeScreenshot()
-                val small = Bitmap.createScaledBitmap(bmp, bmp.width * 2 / 5, bmp.height * 2 / 5, true)
-                val out = ByteArrayOutputStream()
-                small.compress(Bitmap.CompressFormat.JPEG, 75, out)
-                val b64 = Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
-                val tag = mode + if (landscape) "H" else "V"
-                b64.chunked(3000).forEachIndexed { i, c -> Log.i("ZXSofaShot", "$tag|$i|$c") }
-                Log.i("ZXSofaShot", "$tag|END")
-            }
-        }
-        // Spectrum sin juego, en vertical, con el teclado táctil
-        inst.uiAutomation.setRotation(android.app.UiAutomation.ROTATION_FREEZE_0)
-        Thread.sleep(1000)
-        ActivityScenario.launch<com.zxsofa.ui.EmulatorActivity>(
-            com.zxsofa.ui.EmulatorActivity.freeIntent(ctx, com.zxsofa.data.Machine.SPEC48, false)
-        ).use {
-            Thread.sleep(6000)
-            val bmp = inst.uiAutomation.takeScreenshot()
-            val small = Bitmap.createScaledBitmap(bmp, bmp.width * 2 / 5, bmp.height * 2 / 5, true)
-            val out = ByteArrayOutputStream()
-            small.compress(Bitmap.CompressFormat.JPEG, 75, out)
-            Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP).chunked(3000).forEachIndexed { i, c -> Log.i("ZXSofaShot", "FREEV|$i|$c") }
         }
     }
 }

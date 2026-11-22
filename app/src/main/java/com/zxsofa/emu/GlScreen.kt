@@ -145,7 +145,7 @@ class GlScreen {
     /** Pinta [bmp] en [surface] de [outW]x[outH] píxeles. */
     fun draw(surface: Surface, outW: Int, outH: Int, bmp: Bitmap, effect: ScreenEffect, strength: Float, smooth: Boolean, frame: Bitmap? = null): Boolean {
         val t0 = System.nanoTime()
-        if (effect != lastLogged) { lastLogged = effect; Log.i("ZXSofa", "GL: efecto ${effect.name}, marco=${frame != null}, salida ${outW}x$outH, imagen ${bmp.width}x${bmp.height}") }
+        if (effect != lastLogged) { lastLogged = effect; debugPixels = 3; Log.i("ZXSofa", "GL: efecto ${effect.name}, marco=${frame != null}, salida ${outW}x$outH, imagen ${bmp.width}x${bmp.height}") }
         if (outW <= 0 || outH <= 0 || !bind(surface)) return false
         if (program == 0) setup()
 
@@ -206,6 +206,18 @@ class GlScreen {
         GLES20.glEnableVertexAttribArray(aPos)
         GLES20.glVertexAttribPointer(aPos, 2, GLES20.GL_FLOAT, false, 0, quad)
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+        if (debugPixels > 0) {
+            debugPixels--
+            val px = ByteBuffer.allocateDirect(4).order(ByteOrder.nativeOrder())
+            val pts = listOf(outW / 2 to outH / 2, outW / 2 - (outH * 0.7f).toInt() to outH / 2, 5 to 5, outW / 2 to 20)
+            val sb = StringBuilder("GL píxeles (err=${GLES20.glGetError()}):")
+            for ((x, y) in pts) {
+                px.position(0)
+                GLES20.glReadPixels(x, y, 1, 1, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, px)
+                sb.append(" ($x,$y)=${px.get(0).toInt() and 255},${px.get(1).toInt() and 255},${px.get(2).toInt() and 255}")
+            }
+            Log.i("ZXSofa", sb.toString())
+        }
         EGL14.eglSwapBuffers(display, eglSurface)
         if (timing) {
             GLES20.glFinish()
@@ -216,6 +228,7 @@ class GlScreen {
     }
     private var frames = 0
     private var lastLogged: ScreenEffect? = null
+    private var debugPixels = 0
     private var frameNs = 0L
 
     private fun drawFrame(frame: Bitmap, x: Int, y: Int, w: Int, h: Int) {

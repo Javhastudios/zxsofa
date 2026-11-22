@@ -21,6 +21,7 @@ class ScreenshotTest {
     fun capturasDeEfectos() {
         val inst = InstrumentationRegistry.getInstrumentation()
         val ctx = inst.targetContext
+        com.zxsofa.emu.GlScreen.measure = true
         inst.uiAutomation.setRotation(android.app.UiAutomation.ROTATION_FREEZE_90)
         Thread.sleep(1500)
         for (fx in com.zxsofa.emu.ScreenEffect.entries) {

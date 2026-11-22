@@ -28,6 +28,7 @@ enum class ScreenEffect(val label: String, val code: Float) {
  * monitores y televisores de tubo. Todo se llama desde el hilo del emulador.
  */
 class GlScreen {
+    private val timing get() = measure
     private var display: EGLDisplay = EGL14.EGL_NO_DISPLAY
     private var context: EGLContext = EGL14.EGL_NO_CONTEXT
     private var config: EGLConfig? = null
@@ -38,6 +39,7 @@ class GlScreen {
     private var texture = 0
     private var texW = 0
     private var texH = 0
+    private var curFilter = 0
     private var aPos = 0
     private var uTex = 0
     private var uTexSize = 0
@@ -88,6 +90,7 @@ class GlScreen {
         releaseSurface()
         program = 0
         texture = 0
+        curFilter = 0
         texW = 0
         texH = 0
         if (display != EGL14.EGL_NO_DISPLAY) {
@@ -108,6 +111,8 @@ class GlScreen {
             releaseSurface(); return false
         }
         boundSurface = surface
+        // Que eglSwapBuffers no espere al refresco: el ritmo lo marca el audio
+        EGL14.eglSwapInterval(display, 0)
         return true
     }
 
@@ -125,18 +130,25 @@ class GlScreen {
         GLES20.glGenTextures(1, t, 0)
         texture = t[0]
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture)
-        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
-        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
+        curFilter = 0
         GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
         GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
     }
 
     /** Pinta [bmp] en [surface] de [outW]x[outH] píxeles. */
     fun draw(surface: Surface, outW: Int, outH: Int, bmp: Bitmap, effect: ScreenEffect, strength: Float, smooth: Boolean): Boolean {
+        val t0 = System.nanoTime()
         if (outW <= 0 || outH <= 0 || !bind(surface)) return false
         if (program == 0) setup()
 
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture)
+        // Nítido sin suavizado: vecino más cercano, igual que el pintado clásico
+        val filter = if (effect == ScreenEffect.SHARP && !smooth) GLES20.GL_NEAREST else GLES20.GL_LINEAR
+        if (filter != curFilter) {
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, filter)
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, filter)
+            curFilter = filter
+        }
         if (bmp.width != texW || bmp.height != texH) {
             GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bmp, 0)
             texW = bmp.width; texH = bmp.height
@@ -169,8 +181,15 @@ class GlScreen {
         GLES20.glVertexAttribPointer(aPos, 2, GLES20.GL_FLOAT, false, 0, quad)
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
         EGL14.eglSwapBuffers(display, eglSurface)
+        if (timing) {
+            GLES20.glFinish()
+            frameNs += System.nanoTime() - t0; frames++
+            if (frames == 100) { Log.i("ZXSofa", "GL ${effect.name} ${dw}x$dh: ${frameNs / 100 / 1000} µs/fotograma"); frames = 0; frameNs = 0 }
+        }
         return true
     }
+    private var frames = 0
+    private var frameNs = 0L
 
     private fun compile(type: Int, src: String): Int {
         val s = GLES20.glCreateShader(type)
@@ -194,6 +213,9 @@ class GlScreen {
     }
 
     companion object {
+        /** Mide el tiempo de pintado (solo para pruebas). */
+        @JvmStatic @Volatile var measure = false
+
         private const val VERTEX = """
 attribute vec2 aPos;
 varying vec2 vUv;
@@ -204,7 +226,11 @@ void main() {
 """
 
         const val FRAGMENT = """
+#ifdef GL_FRAGMENT_PRECISION_HIGH
 precision highp float;
+#else
+precision mediump float;
+#endif
 varying vec2 vUv;
 uniform sampler2D uTex;
 uniform vec2 uTexSize;
@@ -214,67 +240,44 @@ uniform float uStrength;
 uniform float uTime;
 uniform float uSmooth;
 
-// Píxeles nítidos pero sin dientes de sierra al escalar por un factor no entero
-vec3 sharp(vec2 uv) {
-    vec2 px = uv * uTexSize;
-    vec2 scale = max(uOutSize / uTexSize, vec2(1.0));
-    vec2 f = fract(px) - 0.5;
-    vec2 p = floor(px) + 0.5 + clamp(f * scale, -0.5, 0.5);
-    return texture2D(uTex, p / uTexSize).rgb;
-}
+// Ligero a propósito: 1–4 lecturas de textura por píxel y nada de exp/pow.
 
-// Muestra con suavizado solo en horizontal (el haz del tubo es continuo a lo largo de la línea)
-vec3 beamSample(vec2 uv, float blur) {
-    vec2 px = uv * uTexSize;
-    float y = (floor(px.y) + 0.5) / uTexSize.y;
-    float dx = blur / uTexSize.x;
-    vec3 c = texture2D(uTex, vec2(uv.x, y)).rgb * 0.5;
-    c += texture2D(uTex, vec2(uv.x - dx, y)).rgb * 0.25;
-    c += texture2D(uTex, vec2(uv.x + dx, y)).rgb * 0.25;
-    return c;
+// Lectura en el centro vertical de la línea: el filtro lineal suaviza solo en horizontal, como el haz
+vec3 line(vec2 uv) {
+    float y = (floor(uv.y * uTexSize.y) + 0.5) / uTexSize.y;
+    return texture2D(uTex, vec2(uv.x, y)).rgb;
 }
 
 vec2 curve(vec2 uv, float k) {
-    uv = uv * 2.0 - 1.0;
-    uv *= 1.0 + k * dot(uv, uv) * vec2(0.6, 1.0) * 0.25;
-    return uv * 0.5 + 0.5;
+    vec2 c = uv * 2.0 - 1.0;
+    c *= 1.0 + k * dot(c, c) * vec2(0.15, 0.25);
+    return c * 0.5 + 0.5;
 }
 
-// Línea de barrido: más fina en colores oscuros, más gruesa en los brillantes
+// Línea de barrido: más gruesa en colores brillantes (aproximación barata de una gaussiana)
 float scan(vec2 uv, vec3 c, float depth) {
-    float lines = uOutSize.y / uTexSize.y;
-    if (lines < 2.0) depth *= 0.4;   // pantalla pequeña: líneas suaves para no hacer moiré
-    float d = fract(uv.y * uTexSize.y) - 0.5;
+    if (uOutSize.y < uTexSize.y * 2.0) depth *= 0.4;   // pantalla pequeña: suave para evitar moiré
+    float d = abs(fract(uv.y * uTexSize.y) - 0.5) * 2.0;
     float lum = dot(c, vec3(0.3, 0.59, 0.11));
-    float w = mix(0.22, 0.42, lum);
-    float beam = exp(-d * d / (2.0 * w * w));
-    return mix(1.0, beam, depth);
+    float b = clamp(1.0 - d * d * (1.6 - lum * 0.9), 0.0, 1.0);
+    return mix(1.0, b, depth);
 }
 
-// Rejilla de fósforo RGB en píxeles reales de la pantalla
 vec3 mask(float amount) {
     float x = mod(floor(gl_FragCoord.x), 3.0);
     vec3 m = x < 1.0 ? vec3(1.0, 0.7, 0.7) : (x < 2.0 ? vec3(0.7, 1.0, 0.7) : vec3(0.7, 0.7, 1.0));
     return mix(vec3(1.0), m, amount);
 }
 
-vec3 glow(vec2 uv) {
-    vec2 d = 1.5 / uTexSize;
-    vec3 g = texture2D(uTex, uv + vec2(d.x, 0.0)).rgb + texture2D(uTex, uv - vec2(d.x, 0.0)).rgb
-           + texture2D(uTex, uv + vec2(0.0, d.y)).rgb + texture2D(uTex, uv - vec2(0.0, d.y)).rgb;
-    return g * 0.25;
-}
+// Brillo: una sola lectura lineal desplazada media celda promedia 2x2 píxeles
+vec3 glow(vec2 uv) { return texture2D(uTex, uv + 0.75 / uTexSize).rgb; }
 
-float vignette(vec2 uv) {
+float frame(vec2 uv) {
     vec2 v = uv * (1.0 - uv);
-    return clamp(pow(v.x * v.y * 18.0, 0.3), 0.0, 1.0);
-}
-
-float edge(vec2 uv) {
-    // Esquinas redondeadas del cristal
-    vec2 d = abs(uv - 0.5) * 2.0;
-    vec2 r = max(d - vec2(0.94), 0.0) / 0.06;
-    return 1.0 - smoothstep(0.85, 1.0, length(r));
+    float vig = clamp(v.x * v.y * 40.0, 0.0, 1.0);
+    vig = sqrt(vig);
+    vec2 d = max(abs(uv - 0.5) * 2.0 - 0.94, 0.0) / 0.06;
+    return vig * (1.0 - smoothstep(0.85, 1.0, length(d)));
 }
 
 void main() {
@@ -283,44 +286,31 @@ void main() {
     vec3 col;
 
     if (uMode < 0.5) {
-        col = uSmooth > 0.5 ? texture2D(uTex, uv).rgb : sharp(uv);
+        col = texture2D(uTex, uv).rgb;
     } else if (uMode < 1.5) {
-        // Monitor CRT: imagen plana y definida, líneas, rejilla RGB y un poco de brillo
-        col = beamSample(uv, 0.35);
+        col = line(uv);
         col *= scan(uv, col, 0.75 * s);
         col *= mask(0.45 * s);
-        col += glow(uv) * 0.12 * s;
+        col += glow(uv) * 0.10 * s;
         col *= 1.0 + 0.45 * s;
     } else if (uMode < 2.5) {
-        // Televisor de tubo: cristal curvo, antena, colores corridos
         uv = curve(uv, 0.9);
         if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
         float off = 0.9 / uTexSize.x;
-        float r = beamSample(uv + vec2(off, 0.0), 0.9).r;
-        vec3 mid = beamSample(uv, 0.9);
-        float b = beamSample(uv - vec2(off, 0.0), 0.9).b;
-        col = vec3(r, mid.g, b);
+        vec3 mid = line(uv);
+        col = vec3(line(uv + vec2(off, 0.0)).r, mid.g, line(uv - vec2(off, 0.0)).b);
         col *= scan(uv, col, 0.55 * s);
         col *= mask(0.3 * s);
-        col += glow(uv) * 0.18;
+        col += glow(uv) * 0.15;
         float noise = fract(sin(dot(gl_FragCoord.xy + uTime * 61.0, vec2(12.9898, 78.233))) * 43758.5453);
         col += (noise - 0.5) * 0.035;
-        col *= 0.985 + 0.015 * sin(uTime * 50.0);
-        col *= 1.0 + 0.35 * s;
-        col *= vignette(uv) * edge(uv);
+        col *= (0.985 + 0.015 * sin(uTime * 50.0)) * (1.0 + 0.35 * s) * frame(uv);
     } else {
-        // Monitor monocromo de fósforo verde o ámbar
         uv = curve(uv, 0.45);
         if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
-        vec3 c = beamSample(uv, 0.5);
-        float lum = dot(c, vec3(0.3, 0.59, 0.11));
-        lum += dot(glow(uv), vec3(0.3, 0.59, 0.11)) * 0.25;
+        float lum = dot(line(uv) * 0.85 + glow(uv) * 0.25, vec3(0.3, 0.59, 0.11));
         vec3 tint = uMode < 3.5 ? vec3(0.25, 1.0, 0.35) : vec3(1.0, 0.68, 0.12);
-        col = tint * lum;
-        col *= scan(uv, vec3(lum), 0.6 * s);
-        col *= 1.0 + 0.4 * s;
-        col += tint * 0.03;
-        col *= vignette(uv) * edge(uv);
+        col = tint * (lum * scan(uv, vec3(lum), 0.6 * s) * (1.0 + 0.4 * s) + 0.03) * frame(uv);
     }
     gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
 }

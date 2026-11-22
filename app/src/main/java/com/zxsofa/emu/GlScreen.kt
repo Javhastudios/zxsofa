@@ -179,19 +179,19 @@ class GlScreen {
         var vy = (outH - dh) / 2
         var vw = dw
         var vh = dh
-        if (effect == ScreenEffect.TV && frame != null) {
-            // Marco de televisor: se encaja entero y la imagen va en el hueco del tubo
-            val fs = minOf(outW.toFloat() / frame.width, outH.toFloat() / frame.height)
-            val fw = (frame.width * fs).toInt()
-            val fh = (frame.height * fs).toInt()
-            val fx = (outW - fw) / 2
-            val fy = (outH - fh) / 2
-            drawFrame(frame, fx, fy, fw, fh)
+        var fx = 0; var fy = 0; var fw = 0; var fh = 0
+        val withFrame = effect == ScreenEffect.TV && frame != null
+        if (withFrame) {
+            // Marco de televisor: se encaja entero y la imagen va detrás del cristal
+            val fs = minOf(outW.toFloat() / frame!!.width, outH.toFloat() / frame.height)
+            fw = (frame.width * fs).toInt()
+            fh = (frame.height * fs).toInt()
+            fx = (outW - fw) / 2
+            fy = (outH - fh) / 2
             vw = (fw * HOLE_W).toInt(); vh = (fh * HOLE_H).toInt()
             vx = fx + (fw * HOLE_X).toInt()
             // GL cuenta desde abajo
             vy = fy + fh - (fh * HOLE_Y).toInt() - vh
-            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture)
         }
         GLES20.glViewport(vx, vy, vw, vh)
 
@@ -203,9 +203,18 @@ class GlScreen {
         GLES20.glUniform1f(uStrength, strength.coerceIn(0f, 1f))
         GLES20.glUniform1f(uTime, ((System.nanoTime() - startTime) / 1e9).toFloat() % 1000f)
         GLES20.glUniform1f(uSmooth, if (smooth) 1f else 0f)
+        GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "uFramed"), if (withFrame) 1f else 0f)
         GLES20.glEnableVertexAttribArray(aPos)
         GLES20.glVertexAttribPointer(aPos, 2, GLES20.GL_FLOAT, false, 0, quad)
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+        if (withFrame) {
+            // El marco encima, con el cristal transparente
+            GLES20.glEnable(GLES20.GL_BLEND)
+            GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE_MINUS_SRC_ALPHA)   // bitmap premultiplicado
+            drawFrame(frame!!, fx, fy, fw, fh)
+            GLES20.glDisable(GLES20.GL_BLEND)
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture)
+        }
         EGL14.eglSwapBuffers(display, eglSurface)
         if (timing) {
             GLES20.glFinish()
@@ -268,11 +277,13 @@ class GlScreen {
         /** Mide el tiempo de pintado (solo para pruebas). */
         @JvmStatic @Volatile var measure = false
 
-        // Hueco del tubo dentro de tv_frame.jpg (1471x984, foto del usuario con el cristal oscurecido)
-        private const val HOLE_X = 126f / 1471f
-        private const val HOLE_Y = 124f / 984f
-        private const val HOLE_W = 953f / 1471f
-        private const val HOLE_H = 715f / 984f
+        // Rectángulo de la imagen dentro de tv_frame.webp (1471x984). El cristal (x 115–1091,
+        // y 121–844) es transparente y el marco se pinta encima: la imagen, algo mayor que el
+        // cristal para compensar la curvatura, llena el cristal hasta el bisel.
+        private const val HOLE_X = 71f / 1471f
+        private const val HOLE_Y = 74f / 984f
+        private const val HOLE_W = 1064f / 1471f
+        private const val HOLE_H = 817f / 984f
 
         private const val PLAIN = """
 precision mediump float;
@@ -304,6 +315,7 @@ uniform float uMode;
 uniform float uStrength;
 uniform float uTime;
 uniform float uSmooth;
+uniform float uFramed;
 
 // Ligero a propósito: 1–4 lecturas de textura por píxel y nada de exp/pow.
 
@@ -341,7 +353,8 @@ float frame(vec2 uv, float amount) {
     vec2 v = uv * (1.0 - uv);
     float vig = mix(1.0, sqrt(clamp(v.x * v.y * 40.0, 0.0, 1.0)), amount);
     vec2 d = max(abs(uv - 0.5) * 2.0 - 0.94, 0.0) / 0.06;
-    return vig * (1.0 - smoothstep(0.85, 1.0, length(d)));
+    // Con marco, el propio cristal redondea las esquinas
+    return vig * mix(1.0 - smoothstep(0.85, 1.0, length(d)), 1.0, uFramed);
 }
 
 void main() {

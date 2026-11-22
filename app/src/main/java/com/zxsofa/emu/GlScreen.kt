@@ -269,10 +269,10 @@ class GlScreen {
         @JvmStatic @Volatile var measure = false
 
         // Hueco del tubo dentro de tv_frame.jpg (1471x984, foto del usuario con el cristal oscurecido)
-        private const val HOLE_X = 126f / 1471f
-        private const val HOLE_Y = 124f / 984f
-        private const val HOLE_W = 953f / 1471f
-        private const val HOLE_H = 715f / 984f
+        private const val HOLE_X = 92f / 1471f    // un poco mayor que el cristal: la curvatura
+        private const val HOLE_Y = 91f / 984f     // encoge la imagen y así llega casi al borde
+        private const val HOLE_W = 1021f / 1471f
+        private const val HOLE_H = 780f / 984f
 
         private const val PLAIN = """
 precision mediump float;

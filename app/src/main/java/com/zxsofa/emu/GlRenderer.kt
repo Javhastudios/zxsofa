@@ -20,7 +20,7 @@ class GlRenderer(
     @Volatile var effect = ScreenEffect.SHARP
     @Volatile var strength = 0.7f
     @Volatile var smooth = false
-    @Volatile var frame: Bitmap? = null
+    @Volatile var tvFrame: Bitmap? = null
 
     private val lock = Object()
     private var back: Bitmap? = null   // del emulador
@@ -92,7 +92,7 @@ class GlRenderer(
                 val f = frame ?: continue
                 synchronized(surfaceLock) {
                     val (surface, w, h) = surfaceSource()
-                    if (surface != null) gl.draw(surface, w, h, f, effect, strength, smooth, frame)
+                    if (surface != null) gl.draw(surface, w, h, f, effect, strength, smooth, tvFrame)
                 }
             }
         } catch (e: Throwable) {

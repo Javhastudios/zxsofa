@@ -348,7 +348,7 @@ class EmulatorEngine(
         val r = gl ?: GlRenderer({ synchronized(surfaceLock) { Triple(holder?.surface, surfaceW, surfaceH) } }, surfaceLock)
             .also { gl = it }
         if (r.state != 2) {
-            r.effect = effect; r.strength = effectStrength; r.smooth = smoothing; r.frame = tvFrame
+            r.effect = effect; r.strength = effectStrength; r.smooth = smoothing; r.tvFrame = tvFrame
             val buf = r.backBuffer(w, h)
             if (NativeCore.nativeCopyFrame(buf)) r.submit()
             return

@@ -60,8 +60,9 @@ class EmulatorEngine(
     private var bitmap: Bitmap? = null
     private val paint = Paint()
     private val dst = Rect()
-    private var gl: GlScreen? = null
-    private var glTried = false
+    private var gl: GlRenderer? = null
+    private var fpsCount = 0
+    private var fpsStart = 0L
     private var surfaceW = 0
     private var surfaceH = 0
 
@@ -214,12 +215,7 @@ class EmulatorEngine(
         // Solo si es la superficie actual (al rotar puede crearse la nueva antes de destruir la vieja)
         synchronized(surfaceLock) { if (holder === h) holder = null }
         // OpenGL tiene que soltar la ventana antes de que Android la destruya
-        val t = thread
-        if (gl != null && t != null && t.isAlive && Thread.currentThread() !== t) {
-            val done = java.util.concurrent.CountDownLatch(1)
-            post { gl?.releaseSurface(); done.countDown() }
-            done.await(600, java.util.concurrent.TimeUnit.MILLISECONDS)
-        }
+        gl?.releaseSurfaceBlocking()
     }
 
     /** Repinta (p. ej. tras cambiar el efecto estando en pausa). */
@@ -275,6 +271,11 @@ class EmulatorEngine(
                 }
 
                 val frames = NativeCore.nativeRunFrame(audio)
+                if (GlScreen.measure && ++fpsCount == 250) {
+                    val now = System.nanoTime()
+                    if (fpsStart != 0L) Log.i(TAG, "Emulación: %.1f fps con %s".format(250e9 / (now - fpsStart), effect.name))
+                    fpsStart = now; fpsCount = 0
+                }
                 if (pulseFrames > 0 && --pulseFrames == 0) {
                     pulseMask = 0
                     pushPad()
@@ -304,7 +305,7 @@ class EmulatorEngine(
             } catch (_: Exception) {
             }
             track?.release()
-            try { gl?.release() } catch (_: Throwable) {}
+            try { gl?.quit() } catch (_: Throwable) {}
             gl = null
             NativeCore.nativeReleaseAll()
             NativeCore.nativeUnload()
@@ -341,32 +342,22 @@ class EmulatorEngine(
         if (size == 0) return
         val w = size ushr 16
         val h = size and 0xFFFF
+
+        val r = gl ?: GlRenderer({ synchronized(surfaceLock) { Triple(holder?.surface, surfaceW, surfaceH) } }, surfaceLock)
+            .also { gl = it }
+        if (r.state != 2) {
+            r.effect = effect; r.strength = effectStrength; r.smooth = smoothing
+            val buf = r.backBuffer(w, h)
+            if (NativeCore.nativeCopyFrame(buf)) r.submit()
+            return
+        }
+
         var bmp = bitmap
         if (bmp == null || bmp.width != w || bmp.height != h) {
             bmp = Bitmap.createBitmap(w, h, Bitmap.Config.RGB_565)
             bitmap = bmp
         }
         if (!NativeCore.nativeCopyFrame(bmp)) return
-
-        if (!glTried) {
-            glTried = true
-            gl = GlScreen().takeIf { it.init() }
-        }
-        val g = gl
-        if (g != null) {
-            synchronized(surfaceLock) {
-                val hld = holder ?: return
-                try {
-                    g.draw(hld.surface, surfaceW, surfaceH, bmp, effect, effectStrength, smoothing)
-                } catch (e: Throwable) {
-                    // Si el shader falla en este aparato, volvemos al pintado clásico
-                    Log.w(TAG, "Fallo OpenGL, uso el pintado normal", e)
-                    try { g.release() } catch (_: Throwable) {}
-                    gl = null
-                }
-            }
-            return
-        }
 
         synchronized(surfaceLock) {
             val hld = holder ?: return

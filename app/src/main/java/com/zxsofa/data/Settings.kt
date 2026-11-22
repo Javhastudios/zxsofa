@@ -34,6 +34,11 @@ class Settings(context: Context) {
         get() = prefs.getFloat("effectStrength", 0.7f)
         set(v) = prefs.edit().putFloat("effectStrength", v).apply()
 
+    /** Dibujar el marco de televisor con el efecto «Televisor de tubo». */
+    var tvFrame: Boolean
+        get() = prefs.getBoolean("tvFrame", true)
+        set(v) = prefs.edit().putBoolean("tvFrame", v).apply()
+
     var touchMode: TouchMode
         get() = enumOr(prefs.getString("touch", null), TouchMode.AUTO)
         set(v) = prefs.edit().putString("touch", v.name).apply()

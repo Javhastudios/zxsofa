@@ -54,6 +54,7 @@ fun SettingsScreen(vm: LibraryViewModel) {
     var smoothing by remember { mutableStateOf(s.smoothing) }
     var effect by remember { mutableStateOf(s.screenEffect) }
     var strength by remember { mutableFloatStateOf(s.effectStrength) }
+    var tvFrame by remember { mutableStateOf(s.tvFrame) }
     var touch by remember { mutableStateOf(s.touchMode) }
     var opacity by remember { mutableFloatStateOf(s.controlsOpacity) }
     var fastLoad by remember { mutableStateOf(s.fastLoad) }
@@ -68,6 +69,9 @@ fun SettingsScreen(vm: LibraryViewModel) {
             SectionTitle("Imagen")
             SelectorRow("Borde de pantalla", border, BorderSize.entries, { it.label }, { border = it; s.border = it })
             SelectorRow("Efecto de pantalla", effect, com.zxsofa.emu.ScreenEffect.entries, { it.label }, { effect = it; s.screenEffect = it })
+            if (effect == com.zxsofa.emu.ScreenEffect.TV) {
+                SwitchRow("Marco de televisor antiguo", tvFrame) { tvFrame = it; s.tvFrame = it }
+            }
             if (effect != com.zxsofa.emu.ScreenEffect.SHARP) {
                 Text("Intensidad de líneas y rejilla: ${(strength * 100).toInt()} %", Modifier.padding(top = 8.dp))
                 Slider(value = strength, onValueChange = { strength = it }, onValueChangeFinished = { s.effectStrength = strength }, valueRange = 0f..1f)

@@ -28,6 +28,6 @@ jobs:
             chmod +x gradlew
             adb logcat -G 16M || true
             adb logcat -c
-            ./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.zxsofa.TvSearchTest || true
+            ./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.zxsofa.ScreenshotTest || true
             adb logcat -d -s ZXSofaTest:V ZXSofa:V AndroidRuntime:E TestRunner:V | tail -80
             adb logcat -d -v raw -s ZXSofaShot:I > shots.txt; wc -c shots.txt; cat shots.txt

@@ -36,6 +36,9 @@ class GlScreen {
     private var boundSurface: Surface? = null
 
     private var program = 0
+    private var plain = 0
+    private var frameTex = 0
+    private var frameBmp: Bitmap? = null
     private var texture = 0
     private var texW = 0
     private var texH = 0
@@ -90,6 +93,9 @@ class GlScreen {
         releaseSurface()
         program = 0
         texture = 0
+        plain = 0
+        frameTex = 0
+        frameBmp = null
         curFilter = 0
         texW = 0
         texH = 0
@@ -117,6 +123,7 @@ class GlScreen {
     }
 
     private fun setup() {
+        plain = link(VERTEX, PLAIN)
         program = link(VERTEX, FRAGMENT)
         aPos = GLES20.glGetAttribLocation(program, "aPos")
         uTex = GLES20.glGetUniformLocation(program, "uTex")
@@ -136,7 +143,7 @@ class GlScreen {
     }
 
     /** Pinta [bmp] en [surface] de [outW]x[outH] píxeles. */
-    fun draw(surface: Surface, outW: Int, outH: Int, bmp: Bitmap, effect: ScreenEffect, strength: Float, smooth: Boolean): Boolean {
+    fun draw(surface: Surface, outW: Int, outH: Int, bmp: Bitmap, effect: ScreenEffect, strength: Float, smooth: Boolean, frame: Bitmap? = null): Boolean {
         val t0 = System.nanoTime()
         if (outW <= 0 || outH <= 0 || !bind(surface)) return false
         if (program == 0) setup()
@@ -167,12 +174,30 @@ class GlScreen {
         GLES20.glViewport(0, 0, outW, outH)
         GLES20.glClearColor(0f, 0f, 0f, 1f)
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
-        GLES20.glViewport((outW - dw) / 2, (outH - dh) / 2, dw, dh)
+        var vx = (outW - dw) / 2
+        var vy = (outH - dh) / 2
+        var vw = dw
+        var vh = dh
+        if (effect == ScreenEffect.TV && frame != null) {
+            // Marco de televisor: se encaja entero y la imagen va en el hueco del tubo
+            val fs = minOf(outW.toFloat() / frame.width, outH.toFloat() / frame.height)
+            val fw = (frame.width * fs).toInt()
+            val fh = (frame.height * fs).toInt()
+            val fx = (outW - fw) / 2
+            val fy = (outH - fh) / 2
+            drawFrame(frame, fx, fy, fw, fh)
+            vw = (fw * HOLE_W).toInt(); vh = (fh * HOLE_H).toInt()
+            vx = fx + (fw * HOLE_X).toInt()
+            // GL cuenta desde abajo
+            vy = fy + fh - (fh * HOLE_Y).toInt() - vh
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture)
+        }
+        GLES20.glViewport(vx, vy, vw, vh)
 
         GLES20.glUseProgram(program)
         GLES20.glUniform1i(uTex, 0)
         GLES20.glUniform2f(uTexSize, texW.toFloat(), texH.toFloat())
-        GLES20.glUniform2f(uOutSize, dw.toFloat(), dh.toFloat())
+        GLES20.glUniform2f(uOutSize, vw.toFloat(), vh.toFloat())
         GLES20.glUniform1f(uMode, effect.code)
         GLES20.glUniform1f(uStrength, strength.coerceIn(0f, 1f))
         GLES20.glUniform1f(uTime, ((System.nanoTime() - startTime) / 1e9).toFloat() % 1000f)
@@ -190,6 +215,31 @@ class GlScreen {
     }
     private var frames = 0
     private var frameNs = 0L
+
+    private fun drawFrame(frame: Bitmap, x: Int, y: Int, w: Int, h: Int) {
+        if (frameTex == 0 || frameBmp !== frame) {
+            if (frameTex == 0) {
+                val t = IntArray(1)
+                GLES20.glGenTextures(1, t, 0)
+                frameTex = t[0]
+            }
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, frameTex)
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
+            GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, frame, 0)
+            frameBmp = frame
+        }
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, frameTex)
+        GLES20.glViewport(x, y, w, h)
+        GLES20.glUseProgram(plain)
+        GLES20.glUniform1i(GLES20.glGetUniformLocation(plain, "uTex"), 0)
+        val a = GLES20.glGetAttribLocation(plain, "aPos")
+        GLES20.glEnableVertexAttribArray(a)
+        GLES20.glVertexAttribPointer(a, 2, GLES20.GL_FLOAT, false, 0, quad)
+        GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+    }
 
     private fun compile(type: Int, src: String): Int {
         val s = GLES20.glCreateShader(type)
@@ -215,6 +265,19 @@ class GlScreen {
     companion object {
         /** Mide el tiempo de pintado (solo para pruebas). */
         @JvmStatic @Volatile var measure = false
+
+        // Hueco del tubo dentro de tv_frame.jpg (1600x1100), generado por tools/make_tv_frame.py
+        private const val HOLE_X = 114f / 1600f
+        private const val HOLE_Y = 110f / 1100f
+        private const val HOLE_W = 1067f / 1600f
+        private const val HOLE_H = 800f / 1100f
+
+        private const val PLAIN = """
+precision mediump float;
+varying vec2 vUv;
+uniform sampler2D uTex;
+void main() { gl_FragColor = texture2D(uTex, vUv); }
+"""
 
         private const val VERTEX = """
 attribute vec2 aPos;
@@ -294,8 +357,9 @@ void main() {
         col += glow(uv) * 0.10 * s;
         col *= 1.0 + 0.45 * s;
     } else if (uMode < 2.5) {
-        uv = curve(uv, 0.9);
-        if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+        uv = curve(uv, 0.45);
+        // Fuera del cristal no se pinta: se ve el fondo negro o el marco de la tele
+        if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) discard;
         float off = 0.9 / uTexSize.x;
         vec3 mid = line(uv);
         col = vec3(line(uv + vec2(off, 0.0)).r, mid.g, line(uv - vec2(off, 0.0)).b);

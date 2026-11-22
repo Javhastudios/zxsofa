@@ -50,6 +50,8 @@ class EmulatorEngine(
     @Volatile var smoothing = false
     @Volatile var effect = ScreenEffect.SHARP
     @Volatile var effectStrength = 0.7f
+    /** Marco de televisor para el efecto TV (null = sin marco). */
+    @Volatile var tvFrame: Bitmap? = null
     @Volatile private var running = false
 
     private var thread: Thread? = null
@@ -346,7 +348,7 @@ class EmulatorEngine(
         val r = gl ?: GlRenderer({ synchronized(surfaceLock) { Triple(holder?.surface, surfaceW, surfaceH) } }, surfaceLock)
             .also { gl = it }
         if (r.state != 2) {
-            r.effect = effect; r.strength = effectStrength; r.smooth = smoothing
+            r.effect = effect; r.strength = effectStrength; r.smooth = smoothing; r.frame = tvFrame
             val buf = r.backBuffer(w, h)
             if (NativeCore.nativeCopyFrame(buf)) r.submit()
             return

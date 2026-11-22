@@ -142,6 +142,7 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
         engine.effect = app.settings.screenEffect
         screenEffect = engine.effect
         engine.effectStrength = app.settings.effectStrength
+        engine.tvFrame = if (app.settings.tvFrame) tvFrameBitmap() else null
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -401,6 +402,10 @@ class EmulatorActivity : ComponentActivity(), EmulatorEngine.Listener {
             else -> freeControls = controls
         }
     }
+
+    private fun tvFrameBitmap(): android.graphics.Bitmap? = try {
+        android.graphics.BitmapFactory.decodeResource(resources, com.zxsofa.R.drawable.tv_frame)
+    } catch (e: Throwable) { null }
 
     private fun cycleEffect() {
         val all = com.zxsofa.emu.ScreenEffect.entries

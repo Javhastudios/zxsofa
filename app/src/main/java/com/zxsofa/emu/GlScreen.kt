@@ -192,6 +192,11 @@ class GlScreen {
             // GL cuenta desde abajo
             vy = fy + fh - (fh * HOLE_Y).toInt() - vh
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture)
+            if (debugPixels > 0) {
+                val px = ByteBuffer.allocateDirect(4).order(ByteOrder.nativeOrder())
+                GLES20.glReadPixels(fx + 30, fy + 30, 1, 1, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, px)
+                Log.i("ZXSofa", "marco ${frame.width}x${frame.height} cfg=${frame.config} en $fx,$fy ${fw}x$fh hueco $vx,$vy ${vw}x$vh tex=$frameTex/$texture plain=$plain err=${GLES20.glGetError()} px=${px.get(0).toInt() and 255},${px.get(1).toInt() and 255},${px.get(2).toInt() and 255}")
+            }
         }
         GLES20.glViewport(vx, vy, vw, vh)
 

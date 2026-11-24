@@ -176,3 +176,30 @@ int zx_insert(const char *path, int autoload)
    fuse_emulation_unpause();
    return error == 0;
 }
+
+/* ---- Interfaz +D (discos .mgt) ---- */
+#include "periph.h"
+#include "settings.h"
+
+int zx_plusd_enable(void)
+{
+   settings_current.plusd = 1;
+   periph_update();
+   machine_reset(0);
+   return periph_is_active(PERIPH_TYPE_PLUSD);
+}
+
+/* ¿Arranca con menú (128/+2/+2A/+3) en vez de directamente en BASIC 48K? */
+int zx_machine_has_menu(void)
+{
+   switch (machine_current->machine)
+   {
+   case LIBSPECTRUM_MACHINE_16:
+   case LIBSPECTRUM_MACHINE_48:
+   case LIBSPECTRUM_MACHINE_48_NTSC:
+   case LIBSPECTRUM_MACHINE_TC2048:
+      return 0;
+   default:
+      return 1;
+   }
+}

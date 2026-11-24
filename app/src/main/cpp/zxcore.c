@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 #define MAX_OPTIONS 64
 #define MAX_W 640
@@ -313,6 +314,86 @@ static void apply_ports(void)
    retro_set_controller_port_device(2, RETRO_DEVICE_SUBCLASS(RETRO_DEVICE_KEYBOARD, 0));
 }
 
+/* ---- Mecanógrafo: pulsa una secuencia de teclas, fotograma a fotograma ---- */
+typedef struct { unsigned k1, k2; int hold, wait; } zx_typed_key;
+static zx_typed_key type_script[24];
+static int type_len, type_pos, type_timer, type_pressed;
+
+static void type_add(unsigned k1, unsigned k2, int hold, int wait)
+{
+   if (type_len < (int)(sizeof type_script / sizeof type_script[0]))
+   {
+      zx_typed_key t = { k1, k2, hold, wait };
+      type_script[type_len++] = t;
+   }
+}
+
+static void type_step(void)
+{
+   zx_typed_key *t;
+   if (type_pos >= type_len)
+      return;
+   t = &type_script[type_pos];
+   if (type_timer == 0 && !type_pressed)
+   {
+      if (t->k1) keys[t->k1] = 1;
+      if (t->k2) keys[t->k2] = 1;
+      type_pressed = 1;
+   }
+   type_timer++;
+   if (type_pressed == 1 && type_timer >= t->hold)
+   {
+      if (t->k1) keys[t->k1] = 0;
+      if (t->k2) keys[t->k2] = 0;
+      type_pressed = 2;
+      type_timer = 0;
+   }
+   else if (type_pressed == 2 && type_timer >= t->wait)
+   {
+      type_pos++;
+      type_timer = 0;
+      type_pressed = 0;
+   }
+}
+
+int zx_plusd_enable(void);
+int zx_machine_has_menu(void);
+
+/* Disco +D (.mgt/.img): conecta la interfaz +D, reinicia y escribe RUN para arrancar G+DOS. */
+static void boot_plusd(void)
+{
+   if (!zx_plusd_enable())
+   {
+      zx_logf(RETRO_LOG_ERROR, "No se pudo activar la interfaz +D\n");
+      return;
+   }
+   type_len = type_pos = type_timer = type_pressed = 0;
+   if (zx_machine_has_menu())
+   {
+      /* Menú del 128: bajar a «128 BASIC» y entrar */
+      type_add(0, 0, 1, 70);
+      type_add(RETROK_LSHIFT, RETROK_6, 4, 20);
+      type_add(RETROK_RETURN, 0, 4, 40);
+      type_add(RETROK_r, 0, 3, 6);
+      type_add(RETROK_u, 0, 3, 6);
+      type_add(RETROK_n, 0, 3, 6);
+   }
+   else
+   {
+      /* 48K: la R en modo K es la palabra RUN */
+      type_add(0, 0, 1, 110);
+      type_add(RETROK_r, 0, 3, 8);
+   }
+   type_add(RETROK_RETURN, 0, 4, 1);
+}
+
+static int is_plusd_disk(const char *path)
+{
+   const char *dot = strrchr(path, '.');
+   if (!dot) return 0;
+   return !strcasecmp(dot, ".mgt") || !strcasecmp(dot, ".img");
+}
+
 int zx_load(const char *path)
 {
    struct retro_game_info info;
@@ -350,6 +431,9 @@ int zx_load(const char *path)
    retro_get_system_av_info(&av_info);
    apply_ports();
    loaded = 1;
+   type_len = type_pos = 0;
+   if (is_plusd_disk(path))
+      boot_plusd();
    return 1;
 }
 
@@ -393,7 +477,10 @@ void zx_reset(void)
 void zx_run_frame(void)
 {
    if (loaded)
+   {
+      type_step();
       retro_run();
+   }
 }
 
 const uint16_t *zx_frame(int *width, int *height, int *pitch_pixels)

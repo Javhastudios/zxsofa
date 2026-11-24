@@ -1626,6 +1626,8 @@ static libspectrum_id_t identify_file_get_ext(const char* filename, const void* 
       case LIBSPECTRUM_ID_DISK_CPC:
       case LIBSPECTRUM_ID_DISK_ECPC:      *ext = ".dsk"; break;
       case LIBSPECTRUM_ID_CARTRIDGE_DCK:  *ext = ".dck"; break;
+      case LIBSPECTRUM_ID_DISK_MGT:       *ext = ".mgt"; break;
+      case LIBSPECTRUM_ID_DISK_IMG:       *ext = ".img"; break;
       default:                            *ext = "";     break;
    }
 

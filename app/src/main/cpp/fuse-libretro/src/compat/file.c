@@ -19,6 +19,7 @@
 #include <fuse/roms/plus3-2.h>
 #include <fuse/roms/plus3-3.h>
 #include <fuse/roms/plus3e-0.h>
+#include <fuse/roms/plusd.h>
 #include <fuse/roms/plus3e-1.h>
 #include <fuse/roms/plus3e-2.h>
 #include <fuse/roms/plus3e-3.h>
@@ -72,6 +73,7 @@ static const entry_t mem_entries[] = {
    { "se-1.rom",         fuse_roms_se_1_rom,                     sizeof(fuse_roms_se_1_rom) },
    { "tc2048.rom",       fuse_roms_tc2048_rom,                   sizeof(fuse_roms_tc2048_rom) },
    { "tc2068-0.rom",     fuse_roms_tc2068_0_rom,                 sizeof(fuse_roms_tc2068_0_rom) },
+   { "plusd.rom",        fuse_roms_plusd_rom,                    sizeof(fuse_roms_plusd_rom) },
    { "tc2068-1.rom",     fuse_roms_tc2068_1_rom,                 sizeof(fuse_roms_tc2068_1_rom) },
    
    { "tape_16.szx",       fuse_lib_compressed_tape_16_szx,       sizeof(fuse_lib_compressed_tape_16_szx) },

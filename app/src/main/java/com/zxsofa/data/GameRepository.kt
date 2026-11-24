@@ -938,7 +938,7 @@ class GameRepository(private val context: Context) {
 
     companion object {
         /** Formatos que acepta el núcleo Fuse, en orden de preferencia dentro de un zip. */
-        val SUPPORTED = listOf("tzx", "tap", "pzx", "z80", "szx", "sna", "dsk", "trd", "scl", "rzx", "dck", "csw", "mgt", "img")
+        val SUPPORTED = listOf("tzx", "tap", "pzx", "z80", "szx", "sna", "dsk", "mgt", "img", "trd", "scl", "rzx", "dck", "csw")
         const val MAX_FILE_SIZE = 32 * 1024 * 1024
         const val BACKUP_INDEX = "zxsofa-backup.json"
 

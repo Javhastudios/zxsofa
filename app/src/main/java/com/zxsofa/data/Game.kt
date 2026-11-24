@@ -110,7 +110,7 @@ data class Game(
 
 /** Reconoce "Side A", "Cara B", "Part 2", "Tape 1 Side B"... en nombres de fichero. */
 object Sides {
-    private val marker = Regex("(?i)(?<![a-z])(side|cara|lado|part|parte|tape|cinta|disk|disco)[\\s_\\-]*([a-d]|[1-9])(?![a-z0-9])")
+    private val marker = Regex("(?i)(?<![a-z])(side|cara|lado|part|parte|tape|cinta|disk|disc|disco)[\\s_\\-]*([a-d]|[1-9])(?![a-z0-9])")
 
     fun hasMarker(fileName: String): Boolean = marker.containsMatchIn(fileName.substringAfterLast('/'))
 
@@ -133,7 +133,7 @@ object Sides {
 
     /** Quita las marcas de cara para agrupar ("Robocop - Side 2 of 2" -> "Robocop"). */
     fun stripMarkers(name: String): String =
-        name.replace(Regex("(?i)(?<![a-z])(side|cara|lado|part|parte|tape|cinta|disk|disco)[\\s_\\-]*([a-d]|[1-9])(\\s*(of|de)\\s*\\d)?(?![a-z0-9])"), " ")
+        name.replace(Regex("(?i)(?<![a-z])(side|cara|lado|part|parte|tape|cinta|disk|disc|disco)[\\s_\\-]*([a-d]|[1-9])(\\s*(of|de)\\s*\\d)?(?![a-z0-9])"), " ")
 
     /** Etiqueta legible: "Cara A", "Cinta 1 · Cara B", "Parte 2"... */
     fun label(fileName: String, index: Int): String {

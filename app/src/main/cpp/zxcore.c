@@ -387,11 +387,35 @@ static void boot_plusd(void)
    type_add(RETROK_RETURN, 0, 4, 1);
 }
 
-static int is_plusd_disk(const char *path)
+static int has_plusd_ext(const char *path)
 {
    const char *dot = strrchr(path, '.');
    if (!dot) return 0;
    return !strcasecmp(dot, ".mgt") || !strcasecmp(dot, ".img");
+}
+
+/* ¿Es un disco +D? En una lista .m3u (varios discos) se mira el primero. */
+static int is_plusd_disk(const char *path)
+{
+   const char *dot = strrchr(path, '.');
+   if (dot && !strcasecmp(dot, ".m3u"))
+   {
+      char line[1024];
+      int found = 0;
+      FILE *f = fopen(path, "r");
+      if (!f) return 0;
+      while (fgets(line, sizeof line, f))
+      {
+         size_t n = strcspn(line, "\r\n");
+         line[n] = 0;
+         if (n == 0 || line[0] == '#') continue;
+         found = has_plusd_ext(line);
+         break;
+      }
+      fclose(f);
+      return found;
+   }
+   return has_plusd_ext(path);
 }
 
 int zx_load(const char *path)
